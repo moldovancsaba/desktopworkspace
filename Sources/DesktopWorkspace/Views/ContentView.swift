@@ -1,0 +1,420 @@
+import SwiftUI
+
+struct ContentView: View {
+    @ObservedObject var store: WorkspaceStore
+    @ObservedObject var windowManager: WindowManager
+
+    @State private var pickingSlot: LayoutSlot?
+    @State private var workspacePendingDelete: SavedWorkspace?
+
+    var body: some View {
+        NavigationSplitView {
+            sidebar
+        } detail: {
+            if let selectedId = store.selectedWorkspaceId,
+               let workspaceBinding = store.binding(for: selectedId) {
+                workspaceEditor(workspaceBinding)
+            } else {
+                emptyState
+            }
+        }
+        .frame(minWidth: 880, minHeight: 680)
+        .onAppear {
+            windowManager.refreshAccessibilityStatus()
+        }
+        .task(id: windowManager.isAccessibilityGranted) {
+            while !windowManager.isAccessibilityGranted && !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                windowManager.refreshAccessibilityStatus()
+            }
+        }
+        .sheet(item: $pickingSlot) { slot in
+            if let selectedId = store.selectedWorkspaceId,
+               let workspaceBinding = store.binding(for: selectedId) {
+                AppPickerSheet(slot: slot, apps: store.installedApps, isLoading: store.isLoadingApps) { assignment in
+                    workspaceBinding.wrappedValue.slotApps[slot.id] = assignment
+                }
+            }
+        }
+        .confirmationDialog(
+            "Delete Workspace?",
+            isPresented: Binding(
+                get: { workspacePendingDelete != nil },
+                set: { if !$0 { workspacePendingDelete = nil } }
+            ),
+            presenting: workspacePendingDelete
+        ) { ws in
+            Button("Delete “\(ws.name)”", role: .destructive) {
+                store.deleteWorkspace(ws.id)
+                workspacePendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                workspacePendingDelete = nil
+            }
+        } message: { ws in
+            Text("This removes “\(ws.name)” and its layout assignments.")
+        }
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            List(selection: $store.selectedWorkspaceId) {
+                Section("Saved Workspaces") {
+                    ForEach(store.workspaces) { ws in
+                        HStack(spacing: 10) {
+                            MiniPresetGlyph(preset: ws.preset)
+                                .frame(width: 24, height: 16)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ws.name)
+                                    .font(.body)
+                                    .lineLimit(1)
+                                Text("\(ws.preset.name) • \(ws.slotApps.count)/\(ws.preset.slots.count) apps")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .tag(ws.id)
+                        .contextMenu {
+                            Button("Launch Workspace") {
+                                Task {
+                                    await windowManager.launchWorkspace(ws) { rect in
+                                        store.updateSavedFrame(rect, for: ws.id)
+                                    }
+                                }
+                            }
+                            Divider()
+                            Button("Duplicate") {
+                                store.duplicateWorkspace(ws)
+                            }
+                            Button("Delete", role: .destructive) {
+                                workspacePendingDelete = ws
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+
+            Divider()
+
+            VStack(spacing: 8) {
+                Button {
+                    store.addWorkspace()
+                } label: {
+                    Label("New Workspace", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                accessibilityBanner
+            }
+            .padding(10)
+        }
+        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 300)
+    }
+
+    private var accessibilityBanner: some View {
+        HStack(spacing: 6) {
+            if windowManager.isAccessibilityGranted {
+                Image(systemName: "checkmark.shield.fill")
+                    .foregroundStyle(.green)
+                Text("Accessibility Ready")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Needs Accessibility")
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                Spacer()
+                Button("Grant") {
+                    windowManager.requestAccessibilityPermission()
+                }
+                .font(.caption)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .onTapGesture {
+            windowManager.refreshAccessibilityStatus()
+        }
+    }
+
+    // MARK: - Detail Editor
+
+    private func workspaceEditor(_ workspace: Binding<SavedWorkspace>) -> some View {
+        let ws = workspace.wrappedValue
+        return VStack(spacing: 0) {
+            // Top bar
+            HStack(spacing: 12) {
+                TextField("Workspace Name", text: workspace.name)
+                    .textFieldStyle(.plain)
+                    .font(.title2.bold())
+
+                Spacer()
+
+                if windowManager.isActive(ws.id) {
+                    Button {
+                        Task { await windowManager.realignWorkspace(id: ws.id) }
+                    } label: {
+                        Label("Re-Align", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .help("Reset this workspace's windows to their proper alignment (⌘⇧R)")
+                } else if windowManager.hasActiveWorkspace {
+                    Button {
+                        Task { await windowManager.realignActiveWorkspace() }
+                    } label: {
+                        Label("Re-Align", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .help("Reset active workspace windows to their proper alignment (⌘⇧R)")
+                }
+
+                Button {
+                    workspacePendingDelete = ws
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.bordered)
+                .help("Delete Workspace")
+
+                Button {
+                    Task {
+                        await windowManager.launchWorkspace(ws) { rect in
+                            store.updateSavedFrame(rect, for: ws.id)
+                        }
+                    }
+                } label: {
+                    if windowManager.isLaunching {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.horizontal, 4)
+                    } else {
+                        Label("Launch Workspace", systemImage: "play.fill")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(windowManager.isLaunching || ws.slotApps.isEmpty)
+                .keyboardShortcut("r", modifiers: [.command])
+                .help(ws.slotApps.isEmpty ? "Assign at least one app to a layout slot first" : "Launch and arrange this workspace (⌘R)")
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Layout Preset Picker
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Layout")
+                            .font(.headline)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(LayoutPreset.allPresets) { preset in
+                                    Button {
+                                        let validIds = Set(preset.slots.map(\.id))
+                                        var updated = workspace.wrappedValue
+                                        updated.presetId = preset.id
+                                        updated.slotApps = updated.slotApps.filter { validIds.contains($0.key) }
+                                        workspace.wrappedValue = updated
+                                    } label: {
+                                        LayoutThumbnail(
+                                            preset: preset,
+                                            isSelected: ws.presetId == preset.id
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+
+                    // Visual Slot Assignment
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Apps & Window Positions")
+                                .font(.headline)
+                            Spacer()
+                            Text("Click any slot to assign an app")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        InteractiveLayoutCanvas(
+                            preset: ws.preset,
+                            slotApps: ws.slotApps,
+                            gap: ws.gap,
+                            iconProvider: { store.icon(for: $0) },
+                            onSelectSlot: { slot in
+                                pickingSlot = slot
+                            },
+                            onClearSlot: { slot in
+                                workspace.wrappedValue.slotApps.removeValue(forKey: slot.id)
+                            }
+                        )
+                        .frame(maxHeight: 270)
+                    }
+
+                    // Workspace Options
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Options")
+                            .font(.headline)
+
+                        HStack(spacing: 12) {
+                            Text("Mode:")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            Picker("", selection: workspace.mode) {
+                                ForEach(WorkspaceMode.allCases) { mode in
+                                    Text(mode.title).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 280)
+
+                            Text(ws.mode.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            HStack(spacing: 6) {
+                                Text("Display:")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Picker("", selection: Binding(
+                                    get: { ws.targetDisplayName ?? "" },
+                                    set: { workspace.targetDisplayName.wrappedValue = $0.isEmpty ? nil : $0 }
+                                )) {
+                                    Text("Active Display").tag("")
+                                    Text("Primary Display").tag("__primary__")
+                                    ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { idx, screen in
+                                        Text("\(screen.localizedName) (\(idx + 1))").tag(screen.localizedName)
+                                    }
+                                }
+                                .frame(width: 155)
+                            }
+                        }
+
+                        HStack(spacing: 18) {
+                            Toggle("Open on New Desktop", isOn: workspace.createNewDesktop)
+                                .help("Creates and switches to a new Mission Control Desktop before opening apps")
+                            Toggle("New Window if Running", isOn: workspace.openNewWindowIfRunning)
+                                .help("Opens a fresh window for apps that are already running")
+                            Toggle("Auto-Lock Alignment", isOn: workspace.autoLockLayout)
+                                .help("Automatically snap windows back if an app or user resizes them")
+
+                            Spacer()
+
+                            HStack(spacing: 6) {
+                                Text("Gap: \(Int(ws.gap)) px")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 68, alignment: .trailing)
+                                Slider(value: workspace.gap, in: 0...16, step: 2)
+                                    .frame(width: 100)
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(10)
+                }
+                .padding(16)
+            }
+
+            if let status = windowManager.statusMessage {
+                Divider()
+                HStack(spacing: 8) {
+                    statusIcon(for: windowManager.statusSeverity)
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(statusColor(for: windowManager.statusSeverity))
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .windowBackgroundColor))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statusIcon(for severity: StatusSeverity) -> some View {
+        switch severity {
+        case .info:
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+        case .success:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .warning:
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        case .error:
+            Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
+        }
+    }
+
+    private func statusColor(for severity: StatusSeverity) -> Color {
+        switch severity {
+        case .info: return .secondary
+        case .success: return .primary
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "rectangle.3.group")
+                .font(.system(size: 42))
+                .foregroundStyle(.secondary)
+            Text("No Workspace Selected")
+                .font(.title3.bold())
+            Button("Create Workspace") {
+                store.addWorkspace()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct MiniPresetGlyph: View {
+    let preset: LayoutPreset
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .topLeading) {
+                ForEach(preset.slots) { slot in
+                    let w = max(2, slot.rect.width * geo.size.width - 1.5)
+                    let h = max(2, slot.rect.height * geo.size.height - 1.5)
+                    let x = slot.rect.x * geo.size.width + 0.75
+                    let y = slot.rect.y * geo.size.height + 0.75
+
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.secondary.opacity(0.45))
+                        .frame(width: w, height: h)
+                        .offset(x: x, y: y)
+                }
+            }
+        }
+    }
+}
