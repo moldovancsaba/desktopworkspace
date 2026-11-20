@@ -165,11 +165,13 @@ struct AppAssignment: Codable, Hashable {
     var name: String
     var path: String
     var preferredWindowTitle: String? = nil
+    var preferredWindowNumber: Int? = nil
 }
 
 struct RunningWindowItem: Identifiable, Hashable {
     let id: String
     let pid: pid_t
+    let windowNumber: Int
     let appName: String
     let bundleIdentifier: String
     let bundlePath: String
@@ -181,7 +183,8 @@ struct RunningWindowItem: Identifiable, Hashable {
             bundleIdentifier: bundleIdentifier,
             name: appName,
             path: bundlePath,
-            preferredWindowTitle: windowTitle.isEmpty ? nil : windowTitle
+            preferredWindowTitle: windowTitle.isEmpty ? nil : windowTitle,
+            preferredWindowNumber: windowNumber
         )
     }
 

@@ -12,6 +12,7 @@ struct AppPickerSheet: View {
     let slot: LayoutSlot
     let apps: [InstalledApp]
     let isLoading: Bool
+    let assignedOpenWindows: [Int: String]
     let runningWindowsProvider: () -> [RunningWindowItem]
     let onPick: (AppAssignment) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -171,6 +172,7 @@ struct AppPickerSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(filteredWindows) { item in
+                let usedInSlot = assignedOpenWindows[item.windowNumber]
                 Button {
                     onPick(item.toAssignment())
                     dismiss()
@@ -184,18 +186,28 @@ struct AppPickerSheet: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(item.appName)
                                 .font(.body)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(usedInSlot == nil ? .primary : .secondary)
                             Text(item.windowTitle.isEmpty ? item.bundleIdentifier : item.windowTitle)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
                         Spacer()
+                        if let usedInSlot {
+                            Text("In \(usedInSlot)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.07))
+                                .cornerRadius(4)
+                        }
                     }
                     .contentShape(Rectangle())
                     .padding(.vertical, 2)
                 }
                 .buttonStyle(.plain)
+                .disabled(usedInSlot != nil)
             }
             .listStyle(.inset)
         }

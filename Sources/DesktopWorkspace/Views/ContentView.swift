@@ -32,10 +32,20 @@ struct ContentView: View {
         .sheet(item: $pickingSlot) { slot in
             if let selectedId = store.selectedWorkspaceId,
                let workspaceBinding = store.binding(for: selectedId) {
+                let ws = workspaceBinding.wrappedValue
+                let slotLabels = Dictionary(uniqueKeysWithValues: ws.preset.slots.map { ($0.id, $0.label) })
+                let assignedWindows: [Int: String] = Dictionary(
+                    ws.slotApps.compactMap { (slotId, app) -> (Int, String)? in
+                        guard slotId != slot.id, let winNum = app.preferredWindowNumber else { return nil }
+                        return (winNum, slotLabels[slotId] ?? "Slot \(slotId + 1)")
+                    },
+                    uniquingKeysWith: { first, _ in first }
+                )
                 AppPickerSheet(
                     slot: slot,
                     apps: store.installedApps,
                     isLoading: store.isLoadingApps,
+                    assignedOpenWindows: assignedWindows,
                     runningWindowsProvider: { store.loadRunningWindows() }
                 ) { assignment in
                     workspaceBinding.wrappedValue.slotApps[slot.id] = assignment

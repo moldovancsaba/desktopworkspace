@@ -218,6 +218,7 @@ final class WorkspaceStore: ObservableObject {
             items.append(RunningWindowItem(
                 id: itemId,
                 pid: pid,
+                windowNumber: windowNumber,
                 appName: appName,
                 bundleIdentifier: bundleId,
                 bundlePath: bundleURL.path,

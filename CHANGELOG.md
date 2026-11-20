@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.1.1] - 2026-11-20
+### Fixed
+- Prevent assigning the exact same open window (`preferredWindowNumber`) to multiple slots in the same workspace; already-assigned open windows now show an `In <Slot>` badge and are disabled.
+
 ## [1.1.0] - 2026-11-20
 ### Added
 - **Open Windows Picker:** Assign currently open app windows (including multiple browser windows by title) directly to layout slots.
