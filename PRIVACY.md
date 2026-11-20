@@ -1,6 +1,7 @@
 # Privacy Policy — Desktop Workspace
 
 **Effective Date:** November 18, 2026
+**Developer:** Moldovan Csaba Kft ([moldovancsaba.com](https://moldovancsaba.com))
 
 Desktop Workspace respects your privacy and is designed to operate entirely on your Mac.
 

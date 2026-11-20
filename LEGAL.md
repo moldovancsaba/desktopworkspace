@@ -1,7 +1,7 @@
 # Legal Information & Notices
 
 ## 1. Open-Source License
-**Desktop Workspace** is free and open-source software released under the [MIT License](LICENSE). You are free to use, modify, and distribute this software in accordance with the terms of the MIT License.
+**Desktop Workspace** is free and open-source software published by **Moldovan Csaba Kft** ([moldovancsaba.com](https://moldovancsaba.com)) under the [MIT License](LICENSE). You are free to use, modify, and distribute this software in accordance with the terms of the MIT License.
 
 ## 2. Privacy & Data Handling
 Desktop Workspace does not collect, store, transmit, or sell any personal data, analytics, or telemetry. All workspace configurations are stored locally on the user's Mac. See [PRIVACY.md](PRIVACY.md) for the full Privacy Policy.
