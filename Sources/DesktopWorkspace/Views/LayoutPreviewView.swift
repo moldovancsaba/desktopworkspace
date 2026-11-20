@@ -55,6 +55,7 @@ struct InteractiveLayoutCanvas: View {
     let iconProvider: (AppAssignment) -> NSImage
     let onSelectSlot: (LayoutSlot) -> Void
     let onClearSlot: (LayoutSlot) -> Void
+    let onSwapSlots: (Int, Int) -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -79,7 +80,12 @@ struct InteractiveLayoutCanvas: View {
                         assignment: assigned,
                         icon: assigned.map(iconProvider),
                         onTap: { onSelectSlot(slot) },
-                        onClear: { onClearSlot(slot) }
+                        onClear: { onClearSlot(slot) },
+                        onDropFromSlot: { fromId in
+                            if fromId != slot.id {
+                                onSwapSlots(fromId, slot.id)
+                            }
+                        }
                     )
                     .frame(width: w, height: h)
                     .offset(x: x, y: y)
@@ -96,19 +102,25 @@ private struct SlotCardView: View {
     let icon: NSImage?
     let onTap: () -> Void
     let onClear: () -> Void
+    let onDropFromSlot: (Int) -> Void
 
     @State private var isHovering = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .topTrailing) {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(assignment != nil ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.04))
+                    .fill(
+                        isDropTargeted ? Color.accentColor.opacity(0.24) :
+                        (assignment != nil ? Color.accentColor.opacity(0.09) : Color.primary.opacity(0.04))
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .strokeBorder(
-                                assignment != nil ? Color.accentColor.opacity(isHovering ? 0.9 : 0.45) : Color.primary.opacity(isHovering ? 0.35 : 0.16),
-                                style: assignment != nil ? StrokeStyle(lineWidth: 1.5) : StrokeStyle(lineWidth: 1.2, dash: [5, 4])
+                                isDropTargeted ? Color.accentColor :
+                                (assignment != nil ? Color.accentColor.opacity(isHovering ? 0.9 : 0.45) : Color.primary.opacity(isHovering ? 0.35 : 0.16)),
+                                style: (assignment != nil || isDropTargeted) ? StrokeStyle(lineWidth: isDropTargeted ? 2.5 : 1.5) : StrokeStyle(lineWidth: 1.2, dash: [5, 4])
                             )
                     )
 
@@ -165,6 +177,14 @@ private struct SlotCardView: View {
         .buttonStyle(.plain)
         .onHover { hovering in
             isHovering = hovering
+        }
+        .draggable(String(slot.id))
+        .dropDestination(for: String.self) { items, _ in
+            guard let first = items.first, let sourceId = Int(first) else { return false }
+            onDropFromSlot(sourceId)
+            return true
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
         }
     }
 }

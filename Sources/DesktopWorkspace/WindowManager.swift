@@ -47,6 +47,62 @@ final class WindowManager: ObservableObject {
         activeSessions[workspaceId] != nil
     }
 
+    func stopWorkspace(id workspaceId: UUID) {
+        if let removed = activeSessions.removeValue(forKey: workspaceId) {
+            removed.autoLockTask?.cancel()
+            removed.frameController?.close()
+            activeWorkspaceIds = Set(activeSessions.keys)
+            if lastActiveWorkspaceId == workspaceId {
+                lastActiveWorkspaceId = activeSessions.keys.first
+            }
+            setStatus("Stopped tracking “\(removed.workspace.name)”.", severity: .info)
+        }
+    }
+
+    func syncUpdatedWorkspace(_ updated: SavedWorkspace) async {
+        guard var session = activeSessions[updated.id] else { return }
+        let old = session.workspace
+        session.workspace = updated
+
+        if let newScreen = targetScreen(for: updated), old.targetDisplayName != updated.targetDisplayName {
+            session.screen = newScreen
+        }
+
+        // Prune tracked windows for slots that were cleared or removed
+        let validSlotIds = Set(updated.preset.slots.map(\.id))
+        for slotId in Array(session.trackedSlotWindows.keys) {
+            if !validSlotIds.contains(slotId) || updated.slotApps[slotId] == nil {
+                session.trackedSlotWindows.removeValue(forKey: slotId)
+            } else if old.slotApps[slotId] != updated.slotApps[slotId] {
+                // App assignment changed for this slot -> clear old window so realign opens/matches the new one
+                session.trackedSlotWindows.removeValue(forKey: slotId)
+            }
+        }
+
+        if old.autoLockLayout != updated.autoLockLayout {
+            session.autoLockTask?.cancel()
+            activeSessions[updated.id] = session
+            session.autoLockTask = makeAutoLockTask(for: updated.id)
+        }
+        activeSessions[updated.id] = session
+
+        if old.gap != updated.gap ||
+            old.presetId != updated.presetId ||
+            old.slotApps != updated.slotApps ||
+            old.targetDisplayName != updated.targetDisplayName {
+            await realignWorkspace(id: updated.id)
+        }
+    }
+
+    func swapActiveSlotWindows(workspaceId: UUID, from sourceSlotId: Int, to destSlotId: Int) {
+        guard var session = activeSessions[workspaceId] else { return }
+        let srcWin = session.trackedSlotWindows[sourceSlotId]
+        let dstWin = session.trackedSlotWindows[destSlotId]
+        session.trackedSlotWindows[destSlotId] = srcWin
+        session.trackedSlotWindows[sourceSlotId] = dstWin
+        activeSessions[workspaceId] = session
+    }
+
     init() {
         activeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,

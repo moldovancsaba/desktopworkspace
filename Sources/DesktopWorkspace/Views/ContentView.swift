@@ -84,14 +84,31 @@ struct ContentView: View {
                                 .frame(width: 24, height: 16)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(ws.name)
-                                    .font(.body)
-                                    .lineLimit(1)
+                                HStack(spacing: 6) {
+                                    Text(ws.name)
+                                        .font(.body)
+                                        .lineLimit(1)
+                                    if windowManager.isActive(ws.id) {
+                                        Circle()
+                                            .fill(Color.green)
+                                            .frame(width: 7, height: 7)
+                                            .help("Launched & Active")
+                                    }
+                                }
                                 Text("\(ws.preset.name) • \(ws.slotApps.count)/\(ws.preset.slots.count) apps")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            if windowManager.isActive(ws.id) {
+                                Text("Active")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.green.opacity(0.14))
+                                    .cornerRadius(4)
+                            }
                         }
                         .tag(ws.id)
                         .contextMenu {
@@ -223,6 +240,21 @@ struct ContentView: View {
                     .textFieldStyle(.plain)
                     .font(.title2.bold())
 
+                if windowManager.isActive(ws.id) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 7, height: 7)
+                        Text("Launched")
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.14))
+                    .cornerRadius(6)
+                }
+
                 Spacer()
 
                 if windowManager.isActive(ws.id) {
@@ -235,6 +267,15 @@ struct ContentView: View {
                     .controlSize(.large)
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .help("Reset this workspace's windows to their proper alignment (⌘⇧R)")
+
+                    Button {
+                        windowManager.stopWorkspace(id: ws.id)
+                    } label: {
+                        Image(systemName: "stop.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .help("Stop tracking this launched workspace")
                 } else if windowManager.hasActiveWorkspace {
                     Button {
                         Task { await windowManager.realignActiveWorkspace() }
@@ -316,7 +357,7 @@ struct ContentView: View {
                             Text("Apps & Window Positions")
                                 .font(.headline)
                             Spacer()
-                            Text("Click any slot to assign an app")
+                            Text("Click a slot to assign • Drag & drop slots to swap")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -331,6 +372,25 @@ struct ContentView: View {
                             },
                             onClearSlot: { slot in
                                 workspace.wrappedValue.slotApps.removeValue(forKey: slot.id)
+                            },
+                            onSwapSlots: { fromId, toId in
+                                var updated = workspace.wrappedValue
+                                let fromApp = updated.slotApps[fromId]
+                                let toApp = updated.slotApps[toId]
+                                if let fromApp {
+                                    updated.slotApps[toId] = fromApp
+                                } else {
+                                    updated.slotApps.removeValue(forKey: toId)
+                                }
+                                if let toApp {
+                                    updated.slotApps[fromId] = toApp
+                                } else {
+                                    updated.slotApps.removeValue(forKey: fromId)
+                                }
+                                if windowManager.isActive(ws.id) {
+                                    windowManager.swapActiveSlotWindows(workspaceId: ws.id, from: fromId, to: toId)
+                                }
+                                workspace.wrappedValue = updated
                             }
                         )
                         .frame(maxHeight: 270)
@@ -418,6 +478,13 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(Color(nsColor: .windowBackgroundColor))
+            }
+        }
+        .onChange(of: ws) { _, updated in
+            if windowManager.isActive(updated.id) {
+                Task {
+                    await windowManager.syncUpdatedWorkspace(updated)
+                }
             }
         }
     }

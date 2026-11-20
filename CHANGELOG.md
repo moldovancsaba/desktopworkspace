@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.0] - 2026-11-20
+### Added
+- **Launched / Active Workspace Status:** Sidebar and workspace header now display a green `Active` / `Launched` indicator and a Stop Tracking button.
+- **Live Property Updates for Launched Workspaces:** Editing gap, layout preset, slot apps, target display, or Auto-Lock Alignment on an already-launched workspace updates the live windows immediately.
+- **Drag & Drop Slot Swapping:** Drag and drop any slot card onto another slot in the layout canvas to swap/move apps (and live-swap their windows if the workspace is launched).
+
 ## [1.1.1] - 2026-11-20
 ### Fixed
 - Prevent assigning the exact same open window (`preferredWindowNumber`) to multiple slots in the same workspace; already-assigned open windows now show an `In <Slot>` badge and are disabled.
