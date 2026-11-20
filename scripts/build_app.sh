@@ -9,9 +9,10 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
-    APPLE_CERT_HASH="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application|Apple Development|Apple Distribution/{print $2; exit}')"
+    DEVID_HASH="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Developer ID Application/{print $2; exit}')"
+    APPLE_CERT_HASH="$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development|Apple Distribution/{print $2; exit}')"
     LOCAL_CERT_HASH="$(security find-identity -p codesigning 2>/dev/null | awk '/DesktopWorkspace Local Dev/{print $2; exit}')"
-    CODESIGN_IDENTITY="${APPLE_CERT_HASH:-${LOCAL_CERT_HASH:--}}"
+    CODESIGN_IDENTITY="${DEVID_HASH:-${APPLE_CERT_HASH:-${LOCAL_CERT_HASH:--}}}"
 fi
 ENTITLEMENTS="${ENTITLEMENTS:-$ROOT_DIR/Resources/DesktopWorkspace-Direct.entitlements}"
 
