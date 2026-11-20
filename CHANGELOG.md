@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.0] - 2026-11-20
+### Added
+- **Open Windows Picker:** Assign currently open app windows (including multiple browser windows by title) directly to layout slots.
+- **Automatic Self-Updater (Direct / GitHub Lane):** Checks GitHub Releases on launch and installs signed/notarized `.zip` updates cleanly in place (automatically disabled in Mac App Store sandboxed builds).
+
 ## [1.0.0] - 2026-11-18
 ### Added
 - Initial open-source release of **Desktop Workspace**.
