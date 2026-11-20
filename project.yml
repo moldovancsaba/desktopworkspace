@@ -7,7 +7,7 @@ settings:
   base:
     MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
-    PRODUCT_NAME: "Desktop Workspace"
+    PRODUCT_NAME: DesktopWorkspace
     SWIFT_VERSION: "5.9"
 targets:
   DesktopWorkspace:
@@ -16,11 +16,11 @@ targets:
     sources:
       - path: Sources/DesktopWorkspace
       - path: Resources/Assets.xcassets
-    entitlements:
-      path: Resources/DesktopWorkspace-AppStore.entitlements
     settings:
       base:
         INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/DesktopWorkspace-AppStore.entitlements
+        ENABLE_APP_SANDBOX: YES
         DEVELOPMENT_TEAM: GZE5C5C4L8
         PRODUCT_BUNDLE_IDENTIFIER: com.moldovancsaba.DesktopWorkspace
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
