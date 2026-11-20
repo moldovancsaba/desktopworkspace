@@ -78,6 +78,13 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         return currentContentAXRect() ?? initialRect
     }
 
+    func focus() {
+        if isDockedToSidebar {
+            toggleSidebarDock()
+        }
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     func close() {
         pendingSyncWorkItem?.cancel()
         window?.delegate = nil

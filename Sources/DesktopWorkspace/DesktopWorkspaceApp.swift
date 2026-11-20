@@ -31,18 +31,24 @@ struct DesktopWorkspaceApp: App {
                 Text("No saved workspaces")
             } else {
                 ForEach(store.workspaces) { ws in
-                    Button("Launch \(ws.name)") {
-                        Task {
-                            let ok = await windowManager.launchWorkspace(ws) { rect in
-                                store.updateSavedFrame(rect, for: ws.id)
-                            }
-                            if !ok {
-                                NSApp.activate(ignoringOtherApps: true)
-                                openWindow(id: "main")
+                    if windowManager.isActive(ws.id) {
+                        Button("Open \(ws.name)") {
+                            windowManager.focusWorkspace(id: ws.id)
+                        }
+                    } else {
+                        Button("Launch \(ws.name)") {
+                            Task {
+                                let ok = await windowManager.launchWorkspace(ws) { rect in
+                                    store.updateSavedFrame(rect, for: ws.id)
+                                }
+                                if !ok {
+                                    NSApp.activate(ignoringOtherApps: true)
+                                    openWindow(id: "main")
+                                }
                             }
                         }
+                        .disabled(ws.slotApps.isEmpty || windowManager.isLaunching)
                     }
-                    .disabled(ws.slotApps.isEmpty || windowManager.isLaunching)
                 }
 
                 if !windowManager.activeWorkspaces.isEmpty {
@@ -50,6 +56,9 @@ struct DesktopWorkspaceApp: App {
                     ForEach(windowManager.activeWorkspaces) { activeWs in
                         Button("Re-Align \(activeWs.name)") {
                             Task { await windowManager.realignWorkspace(id: activeWs.id) }
+                        }
+                        Button("Close \(activeWs.name)") {
+                            windowManager.stopWorkspace(id: activeWs.id, closeWindows: true)
                         }
                     }
                 }

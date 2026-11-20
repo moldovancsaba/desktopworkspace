@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.2.1] - 2026-11-20
+### Changed
+- **Open Workspace (when already launched):** Primary button, context menu, and menu bar change from `Launch` to `Open` when a workspace is active and bring all its windows to the front.
+- **Close Active Workspace:** Added a labeled `Close` button (`xmark.circle`) and menu bar `Close <Workspace>` action to stop tracking, close the frame, and close the workspace's member windows.
+
 ## [1.2.0] - 2026-11-20
 ### Added
 - **Launched / Active Workspace Status:** Sidebar and workspace header now display a green `Active` / `Launched` indicator and a Stop Tracking button.

@@ -47,15 +47,45 @@ final class WindowManager: ObservableObject {
         activeSessions[workspaceId] != nil
     }
 
-    func stopWorkspace(id workspaceId: UUID) {
+    func focusWorkspace(id workspaceId: UUID) {
+        guard let session = activeSessions[workspaceId] else { return }
+        lastActiveWorkspaceId = workspaceId
+        session.frameController?.focus()
+
+        var activatedPids = Set<pid_t>()
+        for (_, win) in session.trackedSlotWindows where isWindowAlive(win) {
+            let pid = pidForElement(win)
+            if !activatedPids.contains(pid), let app = NSRunningApplication(processIdentifier: pid) {
+                app.activate(options: [])
+                activatedPids.insert(pid)
+            }
+            AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+        }
+        setStatus("Brought “\(session.workspace.name)” to front.", severity: .info)
+    }
+
+    func stopWorkspace(id workspaceId: UUID, closeWindows: Bool = true) {
         if let removed = activeSessions.removeValue(forKey: workspaceId) {
             removed.autoLockTask?.cancel()
             removed.frameController?.close()
+            if closeWindows {
+                for (_, win) in removed.trackedSlotWindows where isWindowAlive(win) {
+                    var closeBtnRef: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(win, kAXCloseButtonAttribute as CFString, &closeBtnRef) == .success,
+                       let closeBtn = closeBtnRef {
+                        AXUIElementPerformAction(closeBtn as! AXUIElement, kAXPressAction as CFString)
+                    }
+                }
+            }
             activeWorkspaceIds = Set(activeSessions.keys)
             if lastActiveWorkspaceId == workspaceId {
                 lastActiveWorkspaceId = activeSessions.keys.first
             }
-            setStatus("Stopped tracking “\(removed.workspace.name)”.", severity: .info)
+            setStatus(
+                closeWindows ? "Closed “\(removed.workspace.name)”." : "Stopped tracking “\(removed.workspace.name)”.",
+                severity: .info
+            )
         }
     }
 

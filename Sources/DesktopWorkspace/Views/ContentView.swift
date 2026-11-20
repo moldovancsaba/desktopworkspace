@@ -112,10 +112,25 @@ struct ContentView: View {
                         }
                         .tag(ws.id)
                         .contextMenu {
-                            Button("Launch Workspace") {
-                                Task {
-                                    await windowManager.launchWorkspace(ws) { rect in
-                                        store.updateSavedFrame(rect, for: ws.id)
+                            if windowManager.isActive(ws.id) {
+                                Button("Open Workspace") {
+                                    windowManager.focusWorkspace(id: ws.id)
+                                }
+                                Button("Re-Align") {
+                                    Task { await windowManager.realignWorkspace(id: ws.id) }
+                                }
+                                Button("Close Workspace") {
+                                    windowManager.stopWorkspace(id: ws.id, closeWindows: true)
+                                }
+                                Button("Stop Tracking Only") {
+                                    windowManager.stopWorkspace(id: ws.id, closeWindows: false)
+                                }
+                            } else {
+                                Button("Launch Workspace") {
+                                    Task {
+                                        await windowManager.launchWorkspace(ws) { rect in
+                                            store.updateSavedFrame(rect, for: ws.id)
+                                        }
                                     }
                                 }
                             }
@@ -269,13 +284,13 @@ struct ContentView: View {
                     .help("Reset this workspace's windows to their proper alignment (⌘⇧R)")
 
                     Button {
-                        windowManager.stopWorkspace(id: ws.id)
+                        windowManager.stopWorkspace(id: ws.id, closeWindows: true)
                     } label: {
-                        Image(systemName: "stop.circle")
+                        Label("Close", systemImage: "xmark.circle")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .help("Stop tracking this launched workspace")
+                    .help("Stop and close this active workspace's windows")
                 } else if windowManager.hasActiveWorkspace {
                     Button {
                         Task { await windowManager.realignActiveWorkspace() }
@@ -297,9 +312,13 @@ struct ContentView: View {
                 .help("Delete Workspace")
 
                 Button {
-                    Task {
-                        await windowManager.launchWorkspace(ws) { rect in
-                            store.updateSavedFrame(rect, for: ws.id)
+                    if windowManager.isActive(ws.id) {
+                        windowManager.focusWorkspace(id: ws.id)
+                    } else {
+                        Task {
+                            await windowManager.launchWorkspace(ws) { rect in
+                                store.updateSavedFrame(rect, for: ws.id)
+                            }
                         }
                     }
                 } label: {
@@ -307,6 +326,8 @@ struct ContentView: View {
                         ProgressView()
                             .controlSize(.small)
                             .padding(.horizontal, 4)
+                    } else if windowManager.isActive(ws.id) {
+                        Label("Open Workspace", systemImage: "arrow.up.forward.app.fill")
                     } else {
                         Label("Launch Workspace", systemImage: "play.fill")
                     }
@@ -315,7 +336,11 @@ struct ContentView: View {
                 .controlSize(.large)
                 .disabled(windowManager.isLaunching || ws.slotApps.isEmpty)
                 .keyboardShortcut("r", modifiers: [.command])
-                .help(ws.slotApps.isEmpty ? "Assign at least one app to a layout slot first" : "Launch and arrange this workspace (⌘R)")
+                .help(
+                    ws.slotApps.isEmpty
+                        ? "Assign at least one app to a layout slot first"
+                        : (windowManager.isActive(ws.id) ? "Bring this launched workspace to the front (⌘R)" : "Launch and arrange this workspace (⌘R)")
+                )
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
