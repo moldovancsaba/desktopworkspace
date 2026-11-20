@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelegate {
-    static let headerHeight: CGFloat = 36
+    static let headerHeight: CGFloat = 40
 
     @Published var isDockedToSidebar: Bool = false
     @Published var isMaximized: Bool = false
@@ -58,7 +58,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
         win.isReleasedWhenClosed = false
-        win.minSize = NSSize(width: 360, height: 260)
+        win.minSize = NSSize(width: 520, height: 340)
         // Transparent & non-opaque so the interior never obscures or blocks clicks on member windows
         win.isOpaque = false
         win.backgroundColor = .clear
@@ -92,20 +92,21 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         window = nil
     }
 
-    /// Returns the content area below the 36pt header bar in Accessibility top-left screen coordinates.
+    /// Returns the content area below the header bar in Accessibility top-left screen coordinates.
     func currentContentAXRect() -> CGRect? {
         guard let win = window, !isDockedToSidebar else { return nil }
         let frame = win.frame
         let primaryHeight = NSScreen.screens.first?.frame.height ?? win.screen?.frame.height ?? 1080
 
         let topOfWindowAX = primaryHeight - frame.maxY
-        let contentTopAX = topOfWindowAX + Self.headerHeight
-        let contentHeight = max(120, frame.height - Self.headerHeight)
+        let contentTopAX = topOfWindowAX + Self.headerHeight + 2
+        let contentWidth = max(200, frame.width - 4)
+        let contentHeight = max(120, frame.height - Self.headerHeight - 4)
 
         return CGRect(
-            x: round(frame.origin.x),
+            x: round(frame.origin.x + 2),
             y: round(contentTopAX),
-            width: round(frame.width),
+            width: round(contentWidth),
             height: round(contentHeight)
         )
     }
@@ -293,6 +294,7 @@ private struct WorkspaceFrameHeaderView: View {
                             .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 2)
                     )
             }
+            .ignoresSafeArea(.all)
         }
     }
 }

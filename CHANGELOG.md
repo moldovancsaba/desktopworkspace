@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.2.2] - 2026-11-20
+### Fixed
+- **Framed Group Header & Insets:** Ignored titlebar safe-area inset in the Framed Group window and inset member windows inside the 40pt header bar and 2px border so apps no longer overflow at the top or cover the frame controls.
+
 ## [1.2.1] - 2026-11-20
 ### Changed
 - **Open Workspace (when already launched):** Primary button, context menu, and menu bar change from `Launch` to `Open` when a workspace is active and bring all its windows to the front.
