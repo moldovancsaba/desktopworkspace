@@ -123,6 +123,13 @@ private struct SlotCardView: View {
                             .font(.headline)
                             .lineLimit(1)
 
+                        if let winTitle = assignment.preferredWindowTitle, !winTitle.isEmpty {
+                            Text(winTitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
                         Text(slot.label)
                             .font(.caption)
                             .foregroundStyle(.secondary)

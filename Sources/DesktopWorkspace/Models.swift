@@ -164,6 +164,34 @@ struct AppAssignment: Codable, Hashable {
     var bundleIdentifier: String
     var name: String
     var path: String
+    var preferredWindowTitle: String? = nil
+}
+
+struct RunningWindowItem: Identifiable, Hashable {
+    let id: String
+    let pid: pid_t
+    let appName: String
+    let bundleIdentifier: String
+    let bundlePath: String
+    let windowTitle: String
+    let icon: NSImage
+
+    func toAssignment() -> AppAssignment {
+        AppAssignment(
+            bundleIdentifier: bundleIdentifier,
+            name: appName,
+            path: bundlePath,
+            preferredWindowTitle: windowTitle.isEmpty ? nil : windowTitle
+        )
+    }
+
+    static func == (lhs: RunningWindowItem, rhs: RunningWindowItem) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 struct InstalledApp: Identifiable, Hashable {

@@ -488,6 +488,22 @@ final class WindowManager: ObservableObject {
             let existingWindows = standardWindows(of: appElement)
             let existingKeys = Set(existingWindows.map { windowIdentityKey($0, pid: pid) })
 
+            // If user picked an already-open window (preferredWindowTitle), match it first
+            if let preferred = assignment.preferredWindowTitle, !preferred.isEmpty {
+                let unused = existingWindows.filter { !excludingWindowKeys.contains(windowIdentityKey($0, pid: pid)) }
+                if let exact = unused.first(where: { (stringAttribute($0, kAXTitleAttribute) ?? "") == preferred }) {
+                    return exact
+                }
+                if let partial = unused.first(where: {
+                    (stringAttribute($0, kAXTitleAttribute) ?? "").localizedCaseInsensitiveContains(preferred)
+                }) {
+                    return partial
+                }
+                if let anyUnused = unused.first {
+                    return anyUnused
+                }
+            }
+
             if openNewWindowIfRunning || existingWindows.isEmpty {
                 running.activate(options: [.activateAllWindows])
                 try? await Task.sleep(nanoseconds: 180_000_000)

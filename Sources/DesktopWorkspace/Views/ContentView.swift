@@ -31,7 +31,12 @@ struct ContentView: View {
         .sheet(item: $pickingSlot) { slot in
             if let selectedId = store.selectedWorkspaceId,
                let workspaceBinding = store.binding(for: selectedId) {
-                AppPickerSheet(slot: slot, apps: store.installedApps, isLoading: store.isLoadingApps) { assignment in
+                AppPickerSheet(
+                    slot: slot,
+                    apps: store.installedApps,
+                    isLoading: store.isLoadingApps,
+                    runningWindowsProvider: { store.loadRunningWindows() }
+                ) { assignment in
                     workspaceBinding.wrappedValue.slotApps[slot.id] = assignment
                 }
             }

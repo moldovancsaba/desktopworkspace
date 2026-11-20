@@ -183,6 +183,57 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    func loadRunningWindows() -> [RunningWindowItem] {
+        let myPid = ProcessInfo.processInfo.processIdentifier
+        guard let windowList = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+
+        var items: [RunningWindowItem] = []
+        var seenIds = Set<String>()
+
+        for info in windowList {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let pid = info[kCGWindowOwnerPID as String] as? pid_t, pid != myPid,
+                  let windowNumber = info[kCGWindowNumber as String] as? Int,
+                  let boundsDict = info[kCGWindowBounds as String] as? [String: Any],
+                  let w = boundsDict["Width"] as? Double, let h = boundsDict["Height"] as? Double,
+                  w >= 120, h >= 120 else {
+                continue
+            }
+
+            guard let app = NSRunningApplication(processIdentifier: pid),
+                  let bundleId = app.bundleIdentifier,
+                  let bundleURL = app.bundleURL else {
+                continue
+            }
+
+            let appName = app.localizedName ?? (info[kCGWindowOwnerName as String] as? String) ?? bundleId
+            let title = (info[kCGWindowName as String] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let itemId = "\(pid)-\(windowNumber)"
+            guard !seenIds.contains(itemId) else { continue }
+            seenIds.insert(itemId)
+
+            let icon = app.icon ?? NSWorkspace.shared.icon(forFile: bundleURL.path)
+            items.append(RunningWindowItem(
+                id: itemId,
+                pid: pid,
+                appName: appName,
+                bundleIdentifier: bundleId,
+                bundlePath: bundleURL.path,
+                windowTitle: title,
+                icon: icon
+            ))
+        }
+
+        return items.sorted {
+            if $0.appName.localizedCaseInsensitiveCompare($1.appName) != .orderedSame {
+                return $0.appName.localizedCaseInsensitiveCompare($1.appName) == .orderedAscending
+            }
+            return $0.windowTitle.localizedCaseInsensitiveCompare($1.windowTitle) == .orderedAscending
+        }
+    }
+
     nonisolated private static func makeInstalledApp(from url: URL, seen: inout Set<String>) -> InstalledApp? {
         guard let bundle = Bundle(url: url),
               let bundleId = bundle.bundleIdentifier else {
