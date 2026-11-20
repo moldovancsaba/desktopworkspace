@@ -5,11 +5,15 @@ import AppKit
 struct DesktopWorkspaceApp: App {
     @StateObject private var store = WorkspaceStore()
     @StateObject private var windowManager = WindowManager()
+    @StateObject private var updateManager = UpdateManager()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         Window("Desktop Workspace", id: "main") {
-            ContentView(store: store, windowManager: windowManager)
+            ContentView(store: store, windowManager: windowManager, updateManager: updateManager)
+                .task {
+                    await updateManager.checkForUpdates(silentIfUpToDate: true)
+                }
         }
         .defaultSize(width: 980, height: 740)
 
@@ -56,6 +60,21 @@ struct DesktopWorkspaceApp: App {
             Button("Open Desktop Workspace") {
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")
+            }
+
+            if updateManager.isSupported {
+                if let update = updateManager.availableUpdate {
+                    Button("Install Update v\(update.version)…") {
+                        Task { await updateManager.installUpdate(update) }
+                    }
+                    .disabled(updateManager.isInstalling)
+                } else {
+                    Button("Check for Updates…") {
+                        NSApp.activate(ignoringOtherApps: true)
+                        openWindow(id: "main")
+                        Task { await updateManager.checkForUpdates(silentIfUpToDate: false) }
+                    }
+                }
             }
 
             Button("Quit") {

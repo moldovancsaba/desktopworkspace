@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var store: WorkspaceStore
     @ObservedObject var windowManager: WindowManager
+    @ObservedObject var updateManager: UpdateManager
 
     @State private var pickingSlot: LayoutSlot?
     @State private var workspacePendingDelete: SavedWorkspace?
@@ -116,6 +117,10 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
 
                 accessibilityBanner
+
+                if updateManager.isSupported {
+                    updateBanner
+                }
             }
             .padding(10)
         }
@@ -151,6 +156,50 @@ struct ContentView: View {
         .onTapGesture {
             windowManager.refreshAccessibilityStatus()
         }
+    }
+
+    private var updateBanner: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let update = updateManager.availableUpdate {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text("v\(update.version) ready")
+                        .font(.caption.bold())
+                    Spacer()
+                    Button(updateManager.isInstalling ? "Installing…" : "Update") {
+                        Task { await updateManager.installUpdate(update) }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                    .disabled(updateManager.isInstalling)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Text("v\(updateManager.currentVersion)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(updateManager.isChecking ? "Checking…" : "Check Updates") {
+                        Task { await updateManager.checkForUpdates(silentIfUpToDate: false) }
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .disabled(updateManager.isChecking)
+                }
+            }
+
+            if let text = updateManager.statusText, updateManager.availableUpdate == nil {
+                Text(text)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
     }
 
     // MARK: - Detail Editor
