@@ -1,56 +1,35 @@
 # Desktop Workspace
 
-A lightweight, native macOS SwiftUI app for organizing apps into saved desktop layouts and launching them into a fresh Desktop Space with one click.
+A lightweight, native macOS SwiftUI app by **Moldovan Csaba Kft** ([moldovancsaba.com](https://moldovancsaba.com)) for organizing apps into saved desktop layouts, launching them into a fresh Desktop Space, and managing them as a unified workspace.
 
 ## Features
 
-- **Preset Layouts**:
-  - **3 Columns** (3 equal vertical columns)
-  - **2 Top + 1 Bottom** (2 windows on top, 1 wide at the bottom)
-  - **1 Top + 2 Bottom** (1 wide on top, 2 at the bottom)
-  - **2 Columns**, **1 Left + 2 Right**, **2 Left + 1 Right**, **2×2 Grid**, **3 Rows**, and **Full Screen**
-- **Visual Slot Assignment**: Click any slot in the layout preview to pick an installed macOS app (with search and `.app` browser).
-- **Saved Workspaces**: Name, duplicate, delete, and persist workspaces locally in `~/Library/Application Support/DesktopWorkspace/workspaces.json`.
-- **New Desktop Space & Tiling**: Optionally creates and switches to a new Mission Control Desktop, opens each assigned app (or a new window if already running), and tiles windows to fill the usable screen area with configurable gaps (`0–16 px`).
-- **Menu Bar Quick Launch**: Launch any saved workspace in one click from the macOS menu bar (`rectangle.3.group` icon).
+- **9 Built-in Tiling Layouts:** 3 Columns, 2 Top + 1 Bottom, 1 Top + 2 Bottom, 2 Columns, 1 Left + 2 Right, 2 Left + 1 Right, 2×2 Grid, 3 Rows, and Full Screen.
+- **Installed Apps & Open Windows Picker:** Assign any installed macOS app, or pick specific currently open windows by title (e.g., two browser windows side-by-side) with duplicate-window prevention.
+- **Two Workspace Modes:**
+  - **Full Screen Tiled:** Aligns apps edge-to-edge across your chosen display.
+  - **Framed Group:** Groups the workspace inside a resizable container frame you can move/resize as a set, maximize/restore, or dock to the sidebar.
+- **Active Workspace Controls:** Live `Active` / `Launched` status, **Open Workspace** (brings all windows to front), **Re-Align** (`⌘⇧R`, also reopens closed apps), **Close** (stops and closes member windows), **Auto-Lock Alignment**, and **Drag & Drop Slot Swapping**.
+- **Live Property Updates & Persistence:** Editing gap, layout, slots, display, or Auto-Lock on an active workspace updates windows immediately; workspaces and frame geometry persist in `~/Library/Application Support/DesktopWorkspace/workspaces.json`.
+- **Two-Lane Updates:** Direct/GitHub builds check GitHub Releases automatically (`UpdateManager`) and install notarized `.zip` updates in place; Mac App Store builds update via the Mac App Store.
 
 ## Requirements
 
 - macOS 14.0 or later
-- Swift 5.9+ (or Xcode 15+ for archiving/App Store distribution)
-- **Accessibility Permission** (`System Settings → Privacy & Security → Accessibility`) so the app can position and resize other applications' windows.
+- **Accessibility Permission** (`System Settings → Privacy & Security → Accessibility`) to position/resize windows and create Mission Control Desktops.
 
-## Building & Running Locally
+## Building & Publishing
 
 ```bash
-# Build DesktopWorkspace.app with icon and Info.plist
+# Build & sign DesktopWorkspace.app
 ./scripts/build_app.sh
 
-# Launch the app
-open build/DesktopWorkspace.app
+# Build .app, .dmg, .pkg, .zip, and SHA256SUMS.txt
+./scripts/package_all.sh
 ```
 
-To also package a `.dmg` installer:
+See [docs/RELEASE_AND_PUBLISHING_GUIDE.md](docs/RELEASE_AND_PUBLISHING_GUIDE.md) for the full release, notarization, and App Store Connect checklist.
 
-```bash
-CREATE_DMG=1 ./scripts/build_app.sh
-```
+## License & Legal
 
-To regenerate the app icon from source:
-
-```bash
-swift scripts/generate_icon.swift Resources/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png
-```
-
-## Project Structure
-
-- `Package.swift` — Swift Package manifest
-- `project.yml` — XcodeGen specification for generating `DesktopWorkspace.xcodeproj`
-- `Sources/DesktopWorkspace/` — SwiftUI app, models, store, and Accessibility window manager
-- `Resources/Info.plist` — macOS bundle metadata
-- `Resources/AppIcon.icns` & `Resources/Assets.xcassets/` — App icon assets
-- `Resources/DesktopWorkspace-AppStore.entitlements` — Sandboxed entitlements for App Store builds
-- `Resources/DesktopWorkspace-Direct.entitlements` — Hardened-runtime entitlements for Developer ID distribution
-- `scripts/build_app.sh` — Release build, bundle packaging, signing, and optional `.dmg` creation
-- `PRIVACY.md` — Privacy policy for App Store Connect
-- `docs/APP_STORE_CHECKLIST.md` — Publishing guide for Mac App Store & Developer ID notarization
+Released under the [MIT License](LICENSE). See [PRIVACY.md](PRIVACY.md) and [LEGAL.md](LEGAL.md).
