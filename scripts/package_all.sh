@@ -35,6 +35,10 @@ pkgbuild \
     --install-location "/Applications" \
     "$COMPONENT_PKG" >/dev/null
 
+if [[ -z "${INSTALLER_IDENTITY:-}" ]]; then
+    INSTALLER_IDENTITY="$(security find-identity -v -p basic 2>/dev/null | awk '/Developer ID Installer/{print $2; exit}')"
+fi
+
 if [[ -n "${INSTALLER_IDENTITY:-}" ]]; then
     productbuild \
         --package "$COMPONENT_PKG" \
