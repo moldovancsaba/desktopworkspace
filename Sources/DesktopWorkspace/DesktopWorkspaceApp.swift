@@ -12,6 +12,7 @@ struct DesktopWorkspaceApp: App {
         Window("Desktop Workspace", id: "main") {
             ContentView(store: store, windowManager: windowManager, updateManager: updateManager)
                 .task {
+                    registerGlobalHotkeys()
                     await updateManager.checkForUpdates(silentIfUpToDate: true)
                 }
         }
@@ -91,5 +92,26 @@ struct DesktopWorkspaceApp: App {
             }
             .keyboardShortcut("q")
         }
+    }
+
+    private func registerGlobalHotkeys() {
+        HotkeyManager.shared.register(
+            onWorkspaceIndex: { index in
+                guard index < store.workspaces.count else { return }
+                let ws = store.workspaces[index]
+                if windowManager.isActive(ws.id) {
+                    windowManager.focusWorkspace(id: ws.id)
+                } else {
+                    Task {
+                        await windowManager.launchWorkspace(ws) { rect in
+                            store.updateSavedFrame(rect, for: ws.id)
+                        }
+                    }
+                }
+            },
+            onRealign: {
+                Task { await windowManager.realignActiveWorkspace() }
+            }
+        )
     }
 }

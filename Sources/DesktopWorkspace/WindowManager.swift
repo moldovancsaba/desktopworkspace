@@ -22,6 +22,7 @@ final class WindowManager: ObservableObject {
     @Published var statusSeverity: StatusSeverity = .info
     @Published var activeWorkspaceIds: Set<UUID> = []
     @Published var lastActiveWorkspaceId: UUID?
+    @Published var overflowWarnings: [UUID: [Int: CGSize]] = [:]
 
     private var activeObserver: NSObjectProtocol?
     private var didPromptAccessibilityThisSession = false
@@ -49,6 +50,9 @@ final class WindowManager: ObservableObject {
 
     func focusWorkspace(id workspaceId: UUID) {
         guard let session = activeSessions[workspaceId] else { return }
+        if session.workspace.spaceBehavior == .virtualSwitch {
+            hideOtherVirtualWorkspaces(except: workspaceId)
+        }
         lastActiveWorkspaceId = workspaceId
         session.frameController?.focus()
 
@@ -63,6 +67,19 @@ final class WindowManager: ObservableObject {
             AXUIElementPerformAction(win, kAXRaiseAction as CFString)
         }
         setStatus("Brought “\(session.workspace.name)” to front.", severity: .info)
+    }
+
+    private func hideOtherVirtualWorkspaces(except keepId: UUID) {
+        for (otherId, otherSession) in activeSessions where otherId != keepId && otherSession.workspace.spaceBehavior == .virtualSwitch {
+            setTrackedWindowsMinimized(true, for: otherId)
+        }
+    }
+
+    private func screenAXBounds(_ screen: NSScreen) -> CGRect {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let visible = screen.visibleFrame
+        let topY = primaryHeight - (visible.origin.y + visible.height)
+        return CGRect(x: visible.origin.x, y: topY, width: visible.width, height: visible.height)
     }
 
     func stopWorkspace(id workspaceId: UUID, closeWindows: Bool = true) {
@@ -222,7 +239,8 @@ final class WindowManager: ObservableObject {
         }
 
         var desktopNote = ""
-        if workspace.createNewDesktop {
+        switch workspace.spaceBehavior {
+        case .newMissionControlDesktop:
             setStatus("Creating a new Desktop…", severity: .info)
             let created = await createAndSwitchToNewDesktop()
             if !created {
@@ -230,6 +248,10 @@ final class WindowManager: ObservableObject {
             } else {
                 try? await Task.sleep(nanoseconds: 550_000_000)
             }
+        case .virtualSwitch:
+            hideOtherVirtualWorkspaces(except: workspace.id)
+        case .currentDesktop:
+            break
         }
 
         var frameContainerAXRect: CGRect?
@@ -275,6 +297,8 @@ final class WindowManager: ObservableObject {
         var slotWindows: [Int: AXUIElement] = [:]
         var arrangedCount = 0
         var failedApps: [String] = []
+        var slotOverflows: [Int: CGSize] = [:]
+        let containerBounds = frameContainerAXRect ?? screenAXBounds(screen)
 
         for (slot, assignment) in assignedSlots {
             setStatus("Opening \(assignment.name)…", severity: .info)
@@ -293,12 +317,16 @@ final class WindowManager: ObservableObject {
                 let key = windowIdentityKey(window, pid: pidForElement(window))
                 usedWindowKeys.insert(key)
                 slotWindows[slot.id] = window
-                applyFrame(targetRect, to: window)
+                if let clampedSize = applyFrame(targetRect, to: window, containerBounds: containerBounds) {
+                    slotOverflows[slot.id] = clampedSize
+                }
                 arrangedCount += 1
             } else {
                 failedApps.append(assignment.name)
             }
         }
+
+        overflowWarnings[workspace.id] = slotOverflows.isEmpty ? nil : slotOverflows
 
         var session = ActiveWorkspaceSession(
             workspace: workspace,
@@ -705,7 +733,8 @@ final class WindowManager: ObservableObject {
 
     // MARK: - Window Framing
 
-    private func applyFrame(_ rect: CGRect, to window: AXUIElement) {
+    @discardableResult
+    private func applyFrame(_ rect: CGRect, to window: AXUIElement, containerBounds: CGRect? = nil) -> CGSize? {
         // Unminimize if needed
         var minimizedRef: CFTypeRef?
         if AXUIElementCopyAttributeValue(window, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
@@ -722,12 +751,32 @@ final class WindowManager: ObservableObject {
         if let sizeVal = AXValueCreate(.cgSize, &size) {
             AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
         }
-        // Re-apply position after size change in case app clamped bounds
+
+        // Smart Overflow Guard: read back actual size in case the app enforced a minimum width/height
+        var overflowSize: CGSize?
+        if let actualSize = sizeAttribute(window, kAXSizeAttribute) {
+            let wOverflow = actualSize.width - rect.width > 8
+            let hOverflow = actualSize.height - rect.height > 8
+            if wOverflow || hOverflow {
+                overflowSize = actualSize
+                if let bounds = containerBounds {
+                    if actualSize.width > rect.width {
+                        origin.x = max(bounds.minX, min(origin.x, bounds.maxX - actualSize.width))
+                    }
+                    if actualSize.height > rect.height {
+                        origin.y = max(bounds.minY, min(origin.y, bounds.maxY - actualSize.height))
+                    }
+                }
+            }
+        }
+
+        // Re-apply position after size change / overflow clamping
         if let posVal = AXValueCreate(.cgPoint, &origin) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
         }
 
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        return overflowSize
     }
 
     // MARK: - AX Helpers

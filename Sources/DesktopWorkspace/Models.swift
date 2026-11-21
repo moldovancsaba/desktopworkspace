@@ -1,6 +1,30 @@
 import Foundation
 import AppKit
 
+enum SpaceBehavior: String, Codable, CaseIterable, Identifiable {
+    case currentDesktop = "current"
+    case newMissionControlDesktop = "newDesktop"
+    case virtualSwitch = "virtual"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .currentDesktop: return "Current Desktop"
+        case .newMissionControlDesktop: return "New Desktop"
+        case .virtualSwitch: return "Virtual Switch"
+        }
+    }
+
+    var helpText: String {
+        switch self {
+        case .currentDesktop: return "Arranges windows on the current Desktop Space"
+        case .newMissionControlDesktop: return "Creates and switches to a new Mission Control Desktop before opening apps"
+        case .virtualSwitch: return "Instantly hides other virtual workspaces and reveals this one on the current Space"
+        }
+    }
+}
+
 enum WorkspaceMode: String, Codable, CaseIterable, Identifiable {
     case tiled = "tiled"
     case framed = "framed"
@@ -239,31 +263,40 @@ struct SavedWorkspace: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var presetId: String
+    var customSlots: [LayoutSlot]? = nil
     /// Keyed by slot index (0, 1, 2, ...)
     var slotApps: [Int: AppAssignment] = [:]
     var gap: Double = 0
-    var createNewDesktop: Bool = true
+    var spaceBehavior: SpaceBehavior = .newMissionControlDesktop
     var openNewWindowIfRunning: Bool = true
     var mode: WorkspaceMode = .tiled
     var autoLockLayout: Bool = false
     var targetDisplayName: String? = nil
     var savedFrame: CodableRect? = nil
 
+    var effectivePreset: LayoutPreset {
+        if let customSlots, !customSlots.isEmpty {
+            return LayoutPreset(id: "custom", name: "Captured", slots: customSlots)
+        }
+        return LayoutPreset.preset(for: presetId)
+    }
+
     var preset: LayoutPreset {
-        LayoutPreset.preset(for: presetId)
+        effectivePreset
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, presetId, slotApps, gap, createNewDesktop, openNewWindowIfRunning, mode, autoLockLayout, targetDisplayName, savedFrame
+        case id, name, presetId, customSlots, slotApps, gap, createNewDesktop, spaceBehavior, openNewWindowIfRunning, mode, autoLockLayout, targetDisplayName, savedFrame
     }
 
     init(
         id: UUID = UUID(),
         name: String,
         presetId: String,
+        customSlots: [LayoutSlot]? = nil,
         slotApps: [Int: AppAssignment] = [:],
         gap: Double = 0,
-        createNewDesktop: Bool = true,
+        spaceBehavior: SpaceBehavior = .newMissionControlDesktop,
         openNewWindowIfRunning: Bool = true,
         mode: WorkspaceMode = .tiled,
         autoLockLayout: Bool = false,
@@ -273,9 +306,10 @@ struct SavedWorkspace: Identifiable, Codable, Hashable {
         self.id = id
         self.name = name
         self.presetId = presetId
+        self.customSlots = customSlots
         self.slotApps = slotApps
         self.gap = gap
-        self.createNewDesktop = createNewDesktop
+        self.spaceBehavior = spaceBehavior
         self.openNewWindowIfRunning = openNewWindowIfRunning
         self.mode = mode
         self.autoLockLayout = autoLockLayout
@@ -288,13 +322,35 @@ struct SavedWorkspace: Identifiable, Codable, Hashable {
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try c.decode(String.self, forKey: .name)
         presetId = try c.decode(String.self, forKey: .presetId)
+        customSlots = try c.decodeIfPresent([LayoutSlot].self, forKey: .customSlots)
         slotApps = try c.decodeIfPresent([Int: AppAssignment].self, forKey: .slotApps) ?? [:]
         gap = try c.decodeIfPresent(Double.self, forKey: .gap) ?? 0
-        createNewDesktop = try c.decodeIfPresent(Bool.self, forKey: .createNewDesktop) ?? true
+        if let behavior = try c.decodeIfPresent(SpaceBehavior.self, forKey: .spaceBehavior) {
+            spaceBehavior = behavior
+        } else {
+            let legacyNewDesktop = try c.decodeIfPresent(Bool.self, forKey: .createNewDesktop) ?? true
+            spaceBehavior = legacyNewDesktop ? .newMissionControlDesktop : .currentDesktop
+        }
         openNewWindowIfRunning = try c.decodeIfPresent(Bool.self, forKey: .openNewWindowIfRunning) ?? true
         mode = try c.decodeIfPresent(WorkspaceMode.self, forKey: .mode) ?? .tiled
         autoLockLayout = try c.decodeIfPresent(Bool.self, forKey: .autoLockLayout) ?? false
         targetDisplayName = try c.decodeIfPresent(String.self, forKey: .targetDisplayName)
         savedFrame = try c.decodeIfPresent(CodableRect.self, forKey: .savedFrame)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(presetId, forKey: .presetId)
+        try c.encodeIfPresent(customSlots, forKey: .customSlots)
+        try c.encode(slotApps, forKey: .slotApps)
+        try c.encode(gap, forKey: .gap)
+        try c.encode(spaceBehavior, forKey: .spaceBehavior)
+        try c.encode(openNewWindowIfRunning, forKey: .openNewWindowIfRunning)
+        try c.encode(mode, forKey: .mode)
+        try c.encode(autoLockLayout, forKey: .autoLockLayout)
+        try c.encodeIfPresent(targetDisplayName, forKey: .targetDisplayName)
+        try c.encodeIfPresent(savedFrame, forKey: .savedFrame)
     }
 }

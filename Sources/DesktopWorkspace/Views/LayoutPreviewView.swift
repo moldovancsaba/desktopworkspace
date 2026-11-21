@@ -52,6 +52,7 @@ struct InteractiveLayoutCanvas: View {
     let preset: LayoutPreset
     let slotApps: [Int: AppAssignment]
     let gap: Double
+    let overflowWarnings: [Int: CGSize]
     let iconProvider: (AppAssignment) -> NSImage
     let onSelectSlot: (LayoutSlot) -> Void
     let onClearSlot: (LayoutSlot) -> Void
@@ -79,6 +80,7 @@ struct InteractiveLayoutCanvas: View {
                         slot: slot,
                         assignment: assigned,
                         icon: assigned.map(iconProvider),
+                        overflowSize: overflowWarnings[slot.id],
                         onTap: { onSelectSlot(slot) },
                         onClear: { onClearSlot(slot) },
                         onDropFromSlot: { fromId in
@@ -100,6 +102,7 @@ private struct SlotCardView: View {
     let slot: LayoutSlot
     let assignment: AppAssignment?
     let icon: NSImage?
+    let overflowSize: CGSize?
     let onTap: () -> Void
     let onClear: () -> Void
     let onDropFromSlot: (Int) -> Void
@@ -145,6 +148,17 @@ private struct SlotCardView: View {
                         Text(slot.label)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        if let overflowSize {
+                            Text("Min \(Int(overflowSize.width))×\(Int(overflowSize.height))")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.orange.opacity(0.14))
+                                .cornerRadius(4)
+                                .help("This app enforces a minimum window size larger than the slot")
+                        }
                     } else {
                         Image(systemName: "plus.app")
                             .font(.title2)
@@ -157,6 +171,17 @@ private struct SlotCardView: View {
                         Text(slot.label)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        if let overflowSize {
+                            Text("Min \(Int(overflowSize.width))×\(Int(overflowSize.height))")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(Color.orange.opacity(0.14))
+                                .cornerRadius(4)
+                                .help("This app enforces a minimum window size larger than the slot")
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

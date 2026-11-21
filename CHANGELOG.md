@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0] - 2026-11-21
+### Fixed
+- **Open Windows Picker (No Ghosts or Duplicates):** Filtered strictly to `.regular` GUI apps and standard `AXUIElement` windows with real window titles (`kAXTitleAttribute`), eliminating `AutoFill`, `CUAService`, and duplicate invisible helper rows.
+### Added
+- **Smart Overflow Guard:** Reads back `kAXSizeAttribute` after tiling, clamps oversized windows inside the container bounds, and displays a `Min W×H` warning badge on constrained slots.
+- **Capture Current Desktop:** One-click **Capture** button in the sidebar snapshots all visible open windows and their positions into a custom workspace.
+- **Global Hotkeys:** `⌥⌘1`–`⌥⌘9` to launch or focus workspaces from anywhere, and `⌥⌘R` to Re-Align.
+- **Virtual Workspace Switch Mode:** Instant, animation-free workspace switching on the current Space (AeroSpace-style) alongside Current Desktop and New Mission Control Desktop.
+
 ## [1.2.2] - 2026-11-20
 ### Fixed
 - **Framed Group Header & Insets:** Ignored titlebar safe-area inset in the Framed Group window and inset member windows inside the 40pt header bar and 2px border so apps no longer overflow at the top or cover the frame controls.

@@ -78,7 +78,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             List(selection: $store.selectedWorkspaceId) {
                 Section("Saved Workspaces") {
-                    ForEach(store.workspaces) { ws in
+                    ForEach(Array(store.workspaces.enumerated()), id: \.element.id) { index, ws in
                         HStack(spacing: 10) {
                             MiniPresetGlyph(preset: ws.preset)
                                 .frame(width: 24, height: 16)
@@ -108,6 +108,10 @@ struct ContentView: View {
                                     .padding(.vertical, 2)
                                     .background(Color.green.opacity(0.14))
                                     .cornerRadius(4)
+                            } else if index < 9 {
+                                Text("⌥⌘\(index + 1)")
+                                    .font(.caption2.monospaced())
+                                    .foregroundStyle(.tertiary)
                             }
                         }
                         .tag(ws.id)
@@ -150,13 +154,30 @@ struct ContentView: View {
             Divider()
 
             VStack(spacing: 8) {
-                Button {
-                    store.addWorkspace()
-                } label: {
-                    Label("New Workspace", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
+                HStack(spacing: 6) {
+                    Button {
+                        store.addWorkspace()
+                    } label: {
+                        Label("New", systemImage: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        if let captured = store.captureCurrentDesktop() {
+                            windowManager.statusMessage = "Captured \(captured.slotApps.count) open windows into “\(captured.name)”."
+                            windowManager.statusSeverity = .success
+                        } else {
+                            windowManager.statusMessage = "Grant Accessibility and open at least one window to capture."
+                            windowManager.statusSeverity = .warning
+                        }
+                    } label: {
+                        Label("Capture", systemImage: "camera.viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Capture all currently open windows and their positions into a custom workspace")
                 }
-                .buttonStyle(.bordered)
 
                 accessibilityBanner
 
@@ -361,12 +382,13 @@ struct ContentView: View {
                                         let validIds = Set(preset.slots.map(\.id))
                                         var updated = workspace.wrappedValue
                                         updated.presetId = preset.id
+                                        updated.customSlots = nil
                                         updated.slotApps = updated.slotApps.filter { validIds.contains($0.key) }
                                         workspace.wrappedValue = updated
                                     } label: {
                                         LayoutThumbnail(
                                             preset: preset,
-                                            isSelected: ws.presetId == preset.id
+                                            isSelected: ws.customSlots == nil && ws.presetId == preset.id
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -391,6 +413,7 @@ struct ContentView: View {
                             preset: ws.preset,
                             slotApps: ws.slotApps,
                             gap: ws.gap,
+                            overflowWarnings: windowManager.overflowWarnings[ws.id] ?? [:],
                             iconProvider: { store.icon(for: $0) },
                             onSelectSlot: { slot in
                                 pickingSlot = slot
@@ -464,12 +487,23 @@ struct ContentView: View {
                             }
                         }
 
-                        HStack(spacing: 18) {
-                            Toggle("Open on New Desktop", isOn: workspace.createNewDesktop)
-                                .help("Creates and switches to a new Mission Control Desktop before opening apps")
+                        HStack(spacing: 14) {
+                            HStack(spacing: 6) {
+                                Text("Space:")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Picker("", selection: workspace.spaceBehavior) {
+                                    ForEach(SpaceBehavior.allCases) { behavior in
+                                        Text(behavior.title).tag(behavior)
+                                    }
+                                }
+                                .frame(width: 148)
+                                .help(ws.spaceBehavior.helpText)
+                            }
+
                             Toggle("New Window if Running", isOn: workspace.openNewWindowIfRunning)
                                 .help("Opens a fresh window for apps that are already running")
-                            Toggle("Auto-Lock Alignment", isOn: workspace.autoLockLayout)
+                            Toggle("Auto-Lock", isOn: workspace.autoLockLayout)
                                 .help("Automatically snap windows back if an app or user resizes them")
 
                             Spacer()
@@ -480,7 +514,7 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                                     .frame(width: 68, alignment: .trailing)
                                 Slider(value: workspace.gap, in: 0...16, step: 2)
-                                    .frame(width: 100)
+                                    .frame(width: 96)
                             }
                         }
                     }
