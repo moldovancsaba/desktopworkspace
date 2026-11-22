@@ -68,9 +68,16 @@ struct DesktopWorkspaceApp: App {
             Divider()
 
             Button("Capture Current Desktop") {
-                if case .success(let captured) = store.captureCurrentDesktop() {
+                switch store.captureCurrentDesktop() {
+                case .success(let captured):
                     windowManager.statusMessage = "Captured \(captured.slotApps.count) open windows into “\(captured.name)”."
                     windowManager.statusSeverity = .success
+                case .needsAccessibility:
+                    windowManager.statusMessage = "Accessibility permission is required to capture open windows."
+                    windowManager.statusSeverity = .warning
+                case .noOpenWindows:
+                    windowManager.statusMessage = "No open standard windows found on the current desktop to capture."
+                    windowManager.statusSeverity = .warning
                 }
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")

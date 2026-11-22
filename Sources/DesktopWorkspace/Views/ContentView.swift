@@ -7,6 +7,7 @@ struct ContentView: View {
 
     @State private var pickingSlot: LayoutSlot?
     @State private var workspacePendingDelete: SavedWorkspace?
+    @State private var pendingPresetReplacement: LayoutPreset?
 
     var body: some View {
         NavigationSplitView {
@@ -309,7 +310,7 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                     .keyboardShortcut("r", modifiers: [.command, .shift])
-                    .help("Reset this workspace's windows to their proper alignment (⌘⇧R)")
+                    .help("Reset this workspace's windows to their proper alignment (⌘⇧R in-app, ⌥⌘R global)")
 
                     Button {
                         windowManager.stopWorkspace(id: ws.id, closeWindows: true)
@@ -328,7 +329,7 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                     .keyboardShortcut("r", modifiers: [.command, .shift])
-                    .help("Reset active workspace windows to their proper alignment (⌘⇧R)")
+                    .help("Reset active workspace windows to their proper alignment (⌘⇧R in-app, ⌥⌘R global)")
                 }
 
                 Button {
@@ -397,14 +398,21 @@ struct ContentView: View {
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 10) {
+                                if ws.customSlots != nil {
+                                    LayoutThumbnail(
+                                        preset: ws.preset,
+                                        isSelected: true
+                                    )
+                                    .help("Custom captured layout")
+                                }
+
                                 ForEach(LayoutPreset.allPresets) { preset in
                                     Button {
-                                        let validIds = Set(preset.slots.map(\.id))
-                                        var updated = workspace.wrappedValue
-                                        updated.presetId = preset.id
-                                        updated.customSlots = nil
-                                        updated.slotApps = updated.slotApps.filter { validIds.contains($0.key) }
-                                        workspace.wrappedValue = updated
+                                        if ws.customSlots != nil {
+                                            pendingPresetReplacement = preset
+                                        } else {
+                                            applyPreset(preset, to: workspace)
+                                        }
                                     } label: {
                                         LayoutThumbnail(
                                             preset: preset,
@@ -415,6 +423,24 @@ struct ContentView: View {
                                 }
                             }
                             .padding(.vertical, 2)
+                        }
+                        .alert(
+                            "Replace Captured Layout?",
+                            isPresented: Binding(
+                                get: { pendingPresetReplacement != nil },
+                                set: { if !$0 { pendingPresetReplacement = nil } }
+                            ),
+                            presenting: pendingPresetReplacement
+                        ) { preset in
+                            Button("Replace with \(preset.name)", role: .destructive) {
+                                applyPreset(preset, to: workspace)
+                                pendingPresetReplacement = nil
+                            }
+                            Button("Cancel", role: .cancel) {
+                                pendingPresetReplacement = nil
+                            }
+                        } message: { preset in
+                            Text("Switching to “\(preset.name)” will discard your custom captured slot positions.")
                         }
                     }
 
@@ -499,6 +525,11 @@ struct ContentView: View {
                                         ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { idx, screen in
                                             Text("\(screen.localizedName) (\(idx + 1))").tag(screen.displayTag)
                                         }
+                                        if let savedDisplay = ws.targetDisplayName,
+                                           savedDisplay != "__primary__",
+                                           !NSScreen.screens.contains(where: { $0.displayTag == savedDisplay }) {
+                                            Text("\(savedDisplay) (Disconnected)").tag(savedDisplay)
+                                        }
                                     }
                                     .frame(width: 170)
                                 }
@@ -524,15 +555,23 @@ struct ContentView: View {
                                         .help("Opens a fresh window for apps that are already running")
                                     Toggle("Lock Layout", isOn: workspace.autoLockLayout)
                                         .help("Automatically snaps windows back if resized or moved")
-                                    HStack(spacing: 6) {
-                                        Text("Gap: \(Int(ws.gap))px")
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 58, alignment: .trailing)
-                                        Slider(value: workspace.gap, in: 0...16, step: 2)
-                                            .frame(width: 84)
-                                    }
                                 }
+                            }
+
+                            GridRow {
+                                HStack(spacing: 8) {
+                                    Text("Gap:")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 56, alignment: .leading)
+                                    Slider(value: workspace.gap, in: 0...16, step: 2)
+                                        .frame(width: 110)
+                                    Text("\(Int(ws.gap))px")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 36, alignment: .leading)
+                                }
+                                Color.clear.frame(height: 1)
                             }
                         }
                     }
@@ -578,6 +617,15 @@ struct ContentView: View {
         case .error:
             Image(systemName: "xmark.octagon.fill").foregroundStyle(.red)
         }
+    }
+
+    private func applyPreset(_ preset: LayoutPreset, to workspace: Binding<SavedWorkspace>) {
+        let validIds = Set(preset.slots.map(\.id))
+        var updated = workspace.wrappedValue
+        updated.presetId = preset.id
+        updated.customSlots = nil
+        updated.slotApps = updated.slotApps.filter { validIds.contains($0.key) }
+        workspace.wrappedValue = updated
     }
 
     private func statusColor(for severity: StatusSeverity) -> Color {

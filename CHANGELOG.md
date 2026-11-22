@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1] - 2026-11-22
+### Fixed
+- **Active Slot Swap Preservation:** Drag-and-drop slot swaps on an active workspace now preserve `trackedSlotWindows` and `overflowWarnings`, and cleanly realign swapped windows instead of reopening them.
+- **Framed Group Header Drag & Dock:** Replaced SwiftUI `DragGesture` with an AppKit `WindowDragHandle` (`mouseDown` -> `performDrag`), prevented docked sidebar pill index collisions with column wrapping, cleared `window = nil` on close, and passed `containerBounds` during live `syncWindows`.
+- **UI & Layout Polish:** Fixed Options Grid Row 2 Col 2 overflow at `minWidth: 880` by moving the `Gap` slider to its own row, added a `"Custom"` captured layout indicator with replacement confirmation, added disconnected display fallback in the Display picker, and aligned `Re-Align` shortcut tooltips (`⌘⇧R` in-app, `⌥⌘R` global).
+- **Menu Bar & Localization:** Surfaced `statusMessage` warnings for `MenuBarExtra` capture failures (`.needsAccessibility`, `.noOpenWindows`) and added locale-independent fallbacks for Mission Control desktop discovery.
+
 ## [1.4.0] - 2026-11-22
 ### Fixed
 - **Framed Group Click-Through (Permanent Fix):** Dynamically toggles `NSWindow.ignoresMouseEvents` so the interior is 100% WindowServer pass-through while keeping the 40pt header bar and 8px resize edges interactive.

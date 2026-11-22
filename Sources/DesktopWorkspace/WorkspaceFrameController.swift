@@ -9,6 +9,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
     @Published var workspaceName: String
     @Published var isDockedToSidebar: Bool = false
     @Published var isMaximized: Bool = false
+    private(set) var dockSlotIndex: Int?
 
     private var window: NSWindow?
     private var savedExpandedFrame: CGRect?
@@ -75,11 +76,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
             controller: self,
             onRealign: { [weak self] in self?.onRealignRequested?() },
             onToggleSidebar: { [weak self] in self?.toggleSidebarDock() },
-            onToggleMaximize: { [weak self] in self?.toggleMaximize() },
-            onDragHeader: { [weak self] in
-                guard let win = self?.window, let event = NSApp.currentEvent else { return }
-                win.performDrag(with: event)
-            }
+            onToggleMaximize: { [weak self] in self?.toggleMaximize() }
         )
         win.contentView = NSHostingView(rootView: rootView)
         win.orderFrontRegardless()
@@ -162,6 +159,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
 
         if isDockedToSidebar {
             isDockedToSidebar = false
+            dockSlotIndex = nil
             win.level = .normal
             if let restore = savedExpandedFrame {
                 win.setFrame(restore, display: true, animate: true)
@@ -177,13 +175,20 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
             win.ignoresMouseEvents = false
             onSetMinimized?(true)
             let slotIndex = dockSlotIndexProvider?() ?? 0
+            dockSlotIndex = slotIndex
+            let dockWidth: CGFloat = 78
             let dockHeight: CGFloat = 170
-            let step: CGFloat = dockHeight + 12
-            let yPos = max(visible.minY + 12, round(visible.maxY - 200 - CGFloat(slotIndex) * step))
+            let stepY: CGFloat = dockHeight + 12
+            let availableHeight = max(dockHeight, visible.height - 24)
+            let perColumn = max(1, Int(availableHeight / stepY))
+            let col = slotIndex / perColumn
+            let row = slotIndex % perColumn
+            let xPos = visible.origin.x + 8 + CGFloat(col) * (dockWidth + 8)
+            let yPos = max(visible.minY + 12, round(visible.maxY - 200 - CGFloat(row) * stepY))
             let dockRect = CGRect(
-                x: visible.origin.x + 8,
+                x: xPos,
                 y: yPos,
-                width: 78,
+                width: dockWidth,
                 height: dockHeight
             )
             win.level = .floating
@@ -282,6 +287,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
     func windowWillClose(_ notification: Notification) {
         pendingSyncWorkItem?.cancel()
         removeMouseMonitors()
+        window = nil
         onClosed?()
     }
 
@@ -308,7 +314,6 @@ private struct WorkspaceFrameHeaderView: View {
     let onRealign: () -> Void
     let onToggleSidebar: () -> Void
     let onToggleMaximize: () -> Void
-    let onDragHeader: () -> Void
 
     var body: some View {
         if controller.isDockedToSidebar {
@@ -380,11 +385,7 @@ private struct WorkspaceFrameHeaderView: View {
                 .padding(.horizontal, 10)
                 .frame(height: WorkspaceFrameController.headerHeight)
                 .background(.ultraThinMaterial)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { _ in onDragHeader() }
-                )
+                .background(WindowDragHandle())
 
                 // Completely clear, click-through body with a subtle 2px frame border
                 Color.clear
@@ -396,6 +397,18 @@ private struct WorkspaceFrameHeaderView: View {
                     .allowsHitTesting(false)
             }
             .ignoresSafeArea(.all)
+        }
+    }
+}
+
+/// AppKit drag handle that initiates `NSWindow.performDrag(with:)` using the real `.leftMouseDown` event.
+private struct WindowDragHandle: NSViewRepresentable {
+    func makeNSView(context: Context) -> DragNSView { DragNSView() }
+    func updateNSView(_ nsView: DragNSView, context: Context) {}
+
+    final class DragNSView: NSView {
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
         }
     }
 }

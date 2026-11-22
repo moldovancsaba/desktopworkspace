@@ -156,7 +156,31 @@ final class WindowManager: ObservableObject {
         let dstWin = session.trackedSlotWindows[destSlotId]
         session.trackedSlotWindows[destSlotId] = srcWin
         session.trackedSlotWindows[sourceSlotId] = dstWin
+
+        // Keep session.workspace.slotApps in sync so syncUpdatedWorkspace does not treat the swap as new apps and wipe trackedSlotWindows
+        let srcApp = session.workspace.slotApps[sourceSlotId]
+        let dstApp = session.workspace.slotApps[destSlotId]
+        if let srcApp {
+            session.workspace.slotApps[destSlotId] = srcApp
+        } else {
+            session.workspace.slotApps.removeValue(forKey: destSlotId)
+        }
+        if let dstApp {
+            session.workspace.slotApps[sourceSlotId] = dstApp
+        } else {
+            session.workspace.slotApps.removeValue(forKey: sourceSlotId)
+        }
+
+        if var warnings = overflowWarnings[workspaceId] {
+            let srcWarn = warnings[sourceSlotId]
+            let dstWarn = warnings[destSlotId]
+            warnings[destSlotId] = srcWarn
+            warnings[sourceSlotId] = dstWarn
+            overflowWarnings[workspaceId] = warnings.isEmpty ? nil : warnings
+        }
+
         activeSessions[workspaceId] = session
+        Task { await realignWorkspace(id: workspaceId) }
     }
 
     init() {
@@ -295,15 +319,25 @@ final class WindowManager: ObservableObject {
             }
             controller.dockSlotIndexProvider = { [weak self] in
                 guard let self else { return 0 }
-                return self.activeSessions.values.filter {
-                    $0.workspace.id != wsId && $0.frameController?.isDockedToSidebar == true
-                }.count
+                let usedIndices = Set(self.activeSessions.values.compactMap { session -> Int? in
+                    guard session.workspace.id != wsId,
+                          let fc = session.frameController,
+                          fc.isDockedToSidebar else { return nil }
+                    return fc.dockSlotIndex
+                })
+                var index = 0
+                while usedIndices.contains(index) {
+                    index += 1
+                }
+                return index
             }
             controller.onClosed = { [weak self] in
                 guard let self else { return }
                 if let removed = self.activeSessions.removeValue(forKey: wsId) {
                     removed.autoLockTask?.cancel()
+                    self.setStatus("Closed frame for “\(removed.workspace.name)” (member windows remain open).", severity: .info)
                 }
+                self.overflowWarnings.removeValue(forKey: wsId)
                 self.activeWorkspaceIds = Set(self.activeSessions.keys)
                 if self.lastActiveWorkspaceId == wsId {
                     self.lastActiveWorkspaceId = self.activeSessions.keys.first
@@ -457,11 +491,15 @@ final class WindowManager: ObservableObject {
     private func syncWindows(for workspaceId: UUID, inAXContainer container: CGRect) {
         guard let session = activeSessions[workspaceId] else { return }
         let ws = session.workspace
+        var slotOverflows: [Int: CGSize] = [:]
         for slot in ws.preset.slots {
             guard let win = session.trackedSlotWindows[slot.id] else { continue }
             let rect = slot.rect.accessibilityRect(inAXContainer: container, gap: ws.gap)
-            applyFrame(rect, to: win)
+            if let clamped = applyFrame(rect, to: win, containerBounds: container) {
+                slotOverflows[slot.id] = clamped
+            }
         }
+        overflowWarnings[workspaceId] = slotOverflows.isEmpty ? nil : slotOverflows
     }
 
     private func setTrackedWindowsMinimized(_ minimized: Bool, for workspaceId: UUID) {
@@ -567,7 +605,7 @@ final class WindowManager: ObservableObject {
                 let title = (stringAttribute(el, kAXTitleAttribute) ?? "").lowercased()
                 let id = (stringAttribute(el, kAXIdentifierAttribute) ?? "").lowercased()
                 return role == kAXButtonRole as String &&
-                    (desc.contains("add desktop") || title.contains("add desktop") || id.contains("add"))
+                    (desc.contains("add desktop") || title.contains("add desktop") || id.contains("add") || title == "+" || desc == "+")
             }) {
                 addDesktopButton = btn
                 break
@@ -581,18 +619,12 @@ final class WindowManager: ObservableObject {
         }
 
         // Count existing desktop buttons before adding
-        let beforeCount = countDesktopButtons(in: dockElement)
+        let beforeCount = findDesktopButtons(in: dockElement).count
         AXUIElementPerformAction(addBtn, kAXPressAction as CFString)
 
         // Wait for the new desktop button to appear, then press the last one to switch to it
         try? await Task.sleep(nanoseconds: 350_000_000)
-        let desktopButtons = findAllElements(in: dockElement, maxDepth: 6, matching: { el in
-            let role = stringAttribute(el, kAXRoleAttribute)
-            let desc = (stringAttribute(el, kAXDescriptionAttribute) ?? "").lowercased()
-            let title = (stringAttribute(el, kAXTitleAttribute) ?? "").lowercased()
-            return role == kAXButtonRole as String &&
-                (desc.hasPrefix("desktop ") || title.hasPrefix("desktop "))
-        })
+        let desktopButtons = findDesktopButtons(in: dockElement)
 
         if desktopButtons.count > beforeCount, let newestDesktop = desktopButtons.last {
             AXUIElementPerformAction(newestDesktop, kAXPressAction as CFString)
@@ -608,14 +640,22 @@ final class WindowManager: ObservableObject {
         return false
     }
 
-    private func countDesktopButtons(in root: AXUIElement) -> Int {
+    private func findDesktopButtons(in root: AXUIElement) -> [AXUIElement] {
         findAllElements(in: root, maxDepth: 6, matching: { el in
-            let role = stringAttribute(el, kAXRoleAttribute)
+            guard stringAttribute(el, kAXRoleAttribute) == kAXButtonRole as String else { return false }
             let desc = (stringAttribute(el, kAXDescriptionAttribute) ?? "").lowercased()
             let title = (stringAttribute(el, kAXTitleAttribute) ?? "").lowercased()
-            return role == kAXButtonRole as String &&
-                (desc.hasPrefix("desktop ") || title.hasPrefix("desktop "))
-        }).count
+            let id = (stringAttribute(el, kAXIdentifierAttribute) ?? "").lowercased()
+            if id.contains("add") || desc.contains("add") || title == "+" {
+                return false
+            }
+            if desc.hasPrefix("desktop ") || title.hasPrefix("desktop ") || id.contains("desktop") || id.contains("space") {
+                return true
+            }
+            // Locale-independent fallback: Mission Control space thumbnails typically have a localized label ending in a space + number (e.g. "Íróasztal 2", "Schreibtisch 2")
+            let label = title.isEmpty ? desc : title
+            return label.split(separator: " ").last.flatMap({ Int($0) }) != nil
+        })
     }
 
     private func sendEscapeKey() {
