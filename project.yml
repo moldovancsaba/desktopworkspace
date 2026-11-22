@@ -5,8 +5,8 @@ options:
     macOS: "14.0"
 settings:
   base:
-    MARKETING_VERSION: "1.3.2"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "1.3.3"
+    CURRENT_PROJECT_VERSION: "10"
     PRODUCT_NAME: DesktopWorkspace
     SWIFT_VERSION: "5.9"
 targets:

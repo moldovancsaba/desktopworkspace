@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.3] - 2026-11-22
+### Fixed
+- **Framed Group Click-Through & App Interaction:** Disabled hit-testing on the Framed Group's transparent interior (`allowsHitTesting(false)`) and automatically raised member windows on `windowDidBecomeKey` so apps inside the frame are always clickable and interactive.
+
 ## [1.3.2] - 2026-11-22
 ### Fixed
 - **Framed Group Full-Screen / Green Button:** Disabled isolated native macOS Full Screen Space (`collectionBehavior = [.fullScreenNone]`) on the Framed Group window and routed the green zoom button (`windowShouldZoom`) to `toggleMaximize()` so maximizing the frame keeps all member windows together on the same Desktop.

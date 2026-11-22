@@ -193,6 +193,14 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         return false
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        if !isDockedToSidebar {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                self?.onRaiseMemberWindows?()
+            }
+        }
+    }
+
     func windowWillClose(_ notification: Notification) {
         pendingSyncWorkItem?.cancel()
         onClosed?()
@@ -300,6 +308,7 @@ private struct WorkspaceFrameHeaderView: View {
                         Rectangle()
                             .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 2)
                     )
+                    .allowsHitTesting(false)
             }
             .ignoresSafeArea(.all)
         }
