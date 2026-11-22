@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.2] - 2026-11-22
+### Fixed
+- **Framed Group Full-Screen / Green Button:** Disabled isolated native macOS Full Screen Space (`collectionBehavior = [.fullScreenNone]`) on the Framed Group window and routed the green zoom button (`windowShouldZoom`) to `toggleMaximize()` so maximizing the frame keeps all member windows together on the same Desktop.
+
 ## [1.3.1] - 2026-11-22
 ### Fixed
 - **Safari & Cryptex App Discovery:** Resolved symlinks in `loadInstalledApps()` and added `/System/Cryptexes/App/System/Applications` so Safari and other symlinked system apps appear in **Installed Apps**.

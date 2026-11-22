@@ -63,6 +63,8 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         win.isOpaque = false
         win.backgroundColor = .clear
         win.hasShadow = false
+        // Prevent entering an isolated native Full Screen Space (which separates the frame from its member windows)
+        win.collectionBehavior = [.fullScreenNone]
         win.delegate = self
 
         let rootView = WorkspaceFrameHeaderView(
@@ -184,6 +186,11 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.onRealignRequested?()
         }
+    }
+
+    func windowShouldZoom(_ window: NSWindow, toFrame newFrame: NSRect) -> Bool {
+        toggleMaximize()
+        return false
     }
 
     func windowWillClose(_ notification: Notification) {
