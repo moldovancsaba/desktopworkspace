@@ -137,6 +137,7 @@ final class WorkspaceStore: ObservableObject {
                 "/Applications",
                 "/System/Applications",
                 "/System/Applications/Utilities",
+                "/System/Cryptexes/App/System/Applications",
                 NSHomeDirectory() + "/Applications"
             ]
             var found: [InstalledApp] = []
@@ -413,7 +414,8 @@ final class WorkspaceStore: ObservableObject {
     }
 
     nonisolated private static func makeInstalledApp(from url: URL, seen: inout Set<String>) -> InstalledApp? {
-        guard let bundle = Bundle(url: url),
+        let resolvedURL = url.resolvingSymlinksInPath()
+        guard let bundle = Bundle(url: resolvedURL),
               let bundleId = bundle.bundleIdentifier else {
             return nil
         }
@@ -422,13 +424,13 @@ final class WorkspaceStore: ObservableObject {
 
         let displayName = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
             ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
-            ?? url.deletingPathExtension().lastPathComponent
-        let icon = NSWorkspace.shared.icon(forFile: url.path)
+            ?? resolvedURL.deletingPathExtension().lastPathComponent
+        let icon = NSWorkspace.shared.icon(forFile: resolvedURL.path)
 
         return InstalledApp(
             name: displayName,
             bundleIdentifier: bundleId,
-            path: url.path,
+            path: resolvedURL.path,
             icon: icon
         )
     }

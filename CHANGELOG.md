@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.1] - 2026-11-22
+### Fixed
+- **Safari & Cryptex App Discovery:** Resolved symlinks in `loadInstalledApps()` and added `/System/Cryptexes/App/System/Applications` so Safari and other symlinked system apps appear in **Installed Apps**.
+
 ## [1.3.0] - 2026-11-21
 ### Fixed
 - **Open Windows Picker (No Ghosts or Duplicates):** Filtered strictly to `.regular` GUI apps and standard `AXUIElement` windows with real window titles (`kAXTitleAttribute`), eliminating `AutoFill`, `CUAService`, and duplicate invisible helper rows.
