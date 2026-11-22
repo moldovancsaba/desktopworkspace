@@ -33,7 +33,7 @@ struct DesktopWorkspaceApp: App {
             } else {
                 ForEach(store.workspaces) { ws in
                     if windowManager.isActive(ws.id) {
-                        Button("Open \(ws.name)") {
+                        Button("Focus \(ws.name)") {
                             windowManager.focusWorkspace(id: ws.id)
                         }
                     } else {
@@ -66,6 +66,15 @@ struct DesktopWorkspaceApp: App {
             }
 
             Divider()
+
+            Button("Capture Current Desktop") {
+                if case .success(let captured) = store.captureCurrentDesktop() {
+                    windowManager.statusMessage = "Captured \(captured.slotApps.count) open windows into “\(captured.name)”."
+                    windowManager.statusSeverity = .success
+                }
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "main")
+            }
 
             Button("Open Desktop Workspace") {
                 NSApp.activate(ignoringOtherApps: true)

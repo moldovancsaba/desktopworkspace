@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0] - 2026-11-22
+### Fixed
+- **Framed Group Click-Through (Permanent Fix):** Dynamically toggles `NSWindow.ignoresMouseEvents` so the interior is 100% WindowServer pass-through while keeping the 40pt header bar and 8px resize edges interactive.
+- **Auto-Lock Loop Fix:** `makeAutoLockTask` now passes `containerBounds` and respects constrained app minimum sizes so it never repeatedly resizes/raises windows while you work.
+- **Multi-Workspace & Edge Cases:** Staggered docked Framed Group sidebar pills, hid other `frameController`s during Virtual Switch, guarded concurrent hotkey launches, matched `preferredWindowNumber`, and disambiguated identical-name monitors (`displayTag`).
+- **UX & Polish:** Added inline empty-slot hint, `Focus Windows` / `Lock Layout` labels, persistent `⌥⌘1–9` shortcut badges, 2-column Options `Grid`, `Capture Current Desktop` in menu bar, and `codesign --verify` + pre-release semver checks in `UpdateManager`.
+
 ## [1.3.3] - 2026-11-22
 ### Fixed
 - **Framed Group Click-Through & App Interaction:** Disabled hit-testing on the Framed Group's transparent interior (`allowsHitTesting(false)`) and automatically raised member windows on `windowDidBecomeKey` so apps inside the frame are always clickable and interactive.

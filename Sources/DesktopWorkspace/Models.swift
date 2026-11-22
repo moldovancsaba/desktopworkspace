@@ -1,6 +1,13 @@
 import Foundation
 import AppKit
 
+extension NSScreen {
+    var displayTag: String {
+        let num = (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+        return "\(localizedName)#\(num)"
+    }
+}
+
 enum SpaceBehavior: String, Codable, CaseIterable, Identifiable {
     case currentDesktop = "current"
     case newMissionControlDesktop = "newDesktop"

@@ -130,7 +130,23 @@ final class UpdateManager: ObservableObject {
                 return
             }
 
+            let verify = Process()
+            verify.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            verify.arguments = ["--verify", "--deep", "--strict", newAppURL.path]
+            try verify.run()
+            verify.waitUntilExit()
+            guard verify.terminationStatus == 0 else {
+                statusText = "Update signature verification failed."
+                isInstalling = false
+                return
+            }
+
             let currentAppURL = Bundle.main.bundleURL
+            guard FileManager.default.isWritableFile(atPath: currentAppURL.deletingLastPathComponent().path) else {
+                statusText = "Move DesktopWorkspace.app to a writable folder (or update via GitHub Releases)."
+                isInstalling = false
+                return
+            }
             let pid = ProcessInfo.processInfo.processIdentifier
             let scriptURL = workDir.appendingPathComponent("apply_update.sh")
 
@@ -159,14 +175,17 @@ final class UpdateManager: ObservableObject {
     }
 
     private func isVersion(_ lhs: String, newerThan rhs: String) -> Bool {
-        let lParts = lhs.split(separator: ".").compactMap { Int($0) }
-        let rParts = rhs.split(separator: ".").compactMap { Int($0) }
+        let lhsSplit = lhs.split(separator: "-", maxSplits: 1)
+        let rhsSplit = rhs.split(separator: "-", maxSplits: 1)
+        let lParts = (lhsSplit.first ?? "").split(separator: ".").compactMap { Int($0) }
+        let rParts = (rhsSplit.first ?? "").split(separator: ".").compactMap { Int($0) }
         let count = max(lParts.count, rParts.count)
         for i in 0..<count {
             let l = i < lParts.count ? lParts[i] : 0
             let r = i < rParts.count ? rParts[i] : 0
             if l != r { return l > r }
         }
-        return false
+        // Stable release (no pre-release suffix) is newer than a pre-release of the same version
+        return lhsSplit.count == 1 && rhsSplit.count > 1
     }
 }

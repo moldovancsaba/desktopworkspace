@@ -100,24 +100,27 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if windowManager.isActive(ws.id) {
-                                Text("Active")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.green)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.green.opacity(0.14))
-                                    .cornerRadius(4)
-                            } else if index < 9 {
-                                Text("⌥⌘\(index + 1)")
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.tertiary)
+                            HStack(spacing: 6) {
+                                if index < 9 {
+                                    Text("⌥⌘\(index + 1)")
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.tertiary)
+                                }
+                                if windowManager.isActive(ws.id) {
+                                    Text("Active")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.green)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.green.opacity(0.14))
+                                        .cornerRadius(4)
+                                }
                             }
                         }
                         .tag(ws.id)
                         .contextMenu {
                             if windowManager.isActive(ws.id) {
-                                Button("Open Workspace") {
+                                Button("Focus Windows") {
                                     windowManager.focusWorkspace(id: ws.id)
                                 }
                                 Button("Re-Align") {
@@ -164,11 +167,15 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
 
                     Button {
-                        if let captured = store.captureCurrentDesktop() {
+                        switch store.captureCurrentDesktop() {
+                        case .success(let captured):
                             windowManager.statusMessage = "Captured \(captured.slotApps.count) open windows into “\(captured.name)”."
                             windowManager.statusSeverity = .success
-                        } else {
-                            windowManager.statusMessage = "Grant Accessibility and open at least one window to capture."
+                        case .needsAccessibility:
+                            windowManager.statusMessage = "Grant Accessibility permission first to capture open windows."
+                            windowManager.statusSeverity = .warning
+                        case .noOpenWindows:
+                            windowManager.statusMessage = "No visible app windows found on the current screen to capture."
                             windowManager.statusSeverity = .warning
                         }
                     } label: {
@@ -348,7 +355,7 @@ struct ContentView: View {
                             .controlSize(.small)
                             .padding(.horizontal, 4)
                     } else if windowManager.isActive(ws.id) {
-                        Label("Open Workspace", systemImage: "arrow.up.forward.app.fill")
+                        Label("Focus Windows", systemImage: "arrow.up.forward.app.fill")
                     } else {
                         Label("Launch Workspace", systemImage: "play.fill")
                     }
@@ -359,12 +366,25 @@ struct ContentView: View {
                 .keyboardShortcut("r", modifiers: [.command])
                 .help(
                     ws.slotApps.isEmpty
-                        ? "Assign at least one app to a layout slot first"
-                        : (windowManager.isActive(ws.id) ? "Bring this launched workspace to the front (⌘R)" : "Launch and arrange this workspace (⌘R)")
+                        ? "Assign an app to at least one slot first"
+                        : (windowManager.isActive(ws.id) ? "Bring this launched workspace's windows to front (⌘R)" : "Launch and arrange this workspace (⌘R)")
                 )
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
+
+            if ws.slotApps.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.tap")
+                        .foregroundStyle(Color.accentColor)
+                    Text("Click any slot below to assign an app before launching.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
 
             Divider()
 
@@ -449,72 +469,70 @@ struct ContentView: View {
                         Text("Options")
                             .font(.headline)
 
-                        HStack(spacing: 12) {
-                            Text("Mode:")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 10) {
+                            GridRow {
+                                HStack(spacing: 8) {
+                                    Text("Mode:")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 56, alignment: .leading)
+                                    Picker("", selection: workspace.mode) {
+                                        ForEach(WorkspaceMode.allCases) { mode in
+                                            Text(mode.title).tag(mode)
+                                        }
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(width: 250)
+                                    .help(ws.mode.subtitle)
+                                }
 
-                            Picker("", selection: workspace.mode) {
-                                ForEach(WorkspaceMode.allCases) { mode in
-                                    Text(mode.title).tag(mode)
+                                HStack(spacing: 8) {
+                                    Text("Display:")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Picker("", selection: Binding(
+                                        get: { ws.targetDisplayName ?? "" },
+                                        set: { workspace.targetDisplayName.wrappedValue = $0.isEmpty ? nil : $0 }
+                                    )) {
+                                        Text("Active Display").tag("")
+                                        Text("Primary Display").tag("__primary__")
+                                        ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { idx, screen in
+                                            Text("\(screen.localizedName) (\(idx + 1))").tag(screen.displayTag)
+                                        }
+                                    }
+                                    .frame(width: 170)
                                 }
                             }
-                            .pickerStyle(.segmented)
-                            .frame(width: 280)
 
-                            Text(ws.mode.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            GridRow {
+                                HStack(spacing: 8) {
+                                    Text("Space:")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 56, alignment: .leading)
+                                    Picker("", selection: workspace.spaceBehavior) {
+                                        ForEach(SpaceBehavior.allCases) { behavior in
+                                            Text(behavior.title).tag(behavior)
+                                        }
+                                    }
+                                    .frame(width: 165)
+                                    .help(ws.spaceBehavior.helpText)
+                                }
 
-                            Spacer()
-
-                            HStack(spacing: 6) {
-                                Text("Display:")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Picker("", selection: Binding(
-                                    get: { ws.targetDisplayName ?? "" },
-                                    set: { workspace.targetDisplayName.wrappedValue = $0.isEmpty ? nil : $0 }
-                                )) {
-                                    Text("Active Display").tag("")
-                                    Text("Primary Display").tag("__primary__")
-                                    ForEach(Array(NSScreen.screens.enumerated()), id: \.offset) { idx, screen in
-                                        Text("\(screen.localizedName) (\(idx + 1))").tag(screen.localizedName)
+                                HStack(spacing: 16) {
+                                    Toggle("New Window if Running", isOn: workspace.openNewWindowIfRunning)
+                                        .help("Opens a fresh window for apps that are already running")
+                                    Toggle("Lock Layout", isOn: workspace.autoLockLayout)
+                                        .help("Automatically snaps windows back if resized or moved")
+                                    HStack(spacing: 6) {
+                                        Text("Gap: \(Int(ws.gap))px")
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 58, alignment: .trailing)
+                                        Slider(value: workspace.gap, in: 0...16, step: 2)
+                                            .frame(width: 84)
                                     }
                                 }
-                                .frame(width: 155)
-                            }
-                        }
-
-                        HStack(spacing: 14) {
-                            HStack(spacing: 6) {
-                                Text("Space:")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Picker("", selection: workspace.spaceBehavior) {
-                                    ForEach(SpaceBehavior.allCases) { behavior in
-                                        Text(behavior.title).tag(behavior)
-                                    }
-                                }
-                                .frame(width: 148)
-                                .help(ws.spaceBehavior.helpText)
-                            }
-
-                            Toggle("New Window if Running", isOn: workspace.openNewWindowIfRunning)
-                                .help("Opens a fresh window for apps that are already running")
-                            Toggle("Auto-Lock", isOn: workspace.autoLockLayout)
-                                .help("Automatically snap windows back if an app or user resizes them")
-
-                            Spacer()
-
-                            HStack(spacing: 6) {
-                                Text("Gap: \(Int(ws.gap)) px")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 68, alignment: .trailing)
-                                Slider(value: workspace.gap, in: 0...16, step: 2)
-                                    .frame(width: 96)
                             }
                         }
                     }

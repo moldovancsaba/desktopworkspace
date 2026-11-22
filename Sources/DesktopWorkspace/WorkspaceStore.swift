@@ -3,6 +3,12 @@ import AppKit
 import SwiftUI
 import ApplicationServices
 
+enum CaptureResult {
+    case success(SavedWorkspace)
+    case needsAccessibility
+    case noOpenWindows
+}
+
 @MainActor
 final class WorkspaceStore: ObservableObject {
     @Published var workspaces: [SavedWorkspace] = []
@@ -61,6 +67,7 @@ final class WorkspaceStore: ObservableObject {
         var copy = ws
         copy.id = UUID()
         copy.name = "\(ws.name) Copy"
+        copy.savedFrame = nil
         workspaces.append(copy)
         selectedWorkspaceId = copy.id
         saveWorkspaces()
@@ -311,10 +318,9 @@ final class WorkspaceStore: ObservableObject {
     }
 
     /// Captures all currently visible standard windows on the main/active screen into a new Custom workspace.
-    @discardableResult
-    func captureCurrentDesktop() -> SavedWorkspace? {
-        guard AXIsProcessTrusted() else { return nil }
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return nil }
+    func captureCurrentDesktop() -> CaptureResult {
+        guard AXIsProcessTrusted() else { return .needsAccessibility }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return .noOpenWindows }
 
         let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
         let visible = screen.visibleFrame
@@ -373,7 +379,7 @@ final class WorkspaceStore: ObservableObject {
             }
         }
 
-        guard !slots.isEmpty else { return nil }
+        guard !slots.isEmpty else { return .noOpenWindows }
         let ws = SavedWorkspace(
             name: "Captured \(workspaces.count + 1)",
             presetId: "custom",
@@ -384,7 +390,7 @@ final class WorkspaceStore: ObservableObject {
         workspaces.append(ws)
         selectedWorkspaceId = ws.id
         saveWorkspaces()
-        return ws
+        return .success(ws)
     }
 
     private func axString(_ el: AXUIElement, _ attr: String) -> String? {

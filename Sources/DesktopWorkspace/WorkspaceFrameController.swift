@@ -4,15 +4,18 @@ import SwiftUI
 @MainActor
 final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelegate {
     static let headerHeight: CGFloat = 40
+    static let resizeEdgeThickness: CGFloat = 8
 
+    @Published var workspaceName: String
     @Published var isDockedToSidebar: Bool = false
     @Published var isMaximized: Bool = false
 
-    let workspaceName: String
     private var window: NSWindow?
     private var savedExpandedFrame: CGRect?
     private var savedPreMaximizeFrame: CGRect?
     private var pendingSyncWorkItem: DispatchWorkItem?
+    private var globalMouseMonitor: Any?
+    private var localMouseMonitor: Any?
 
     var onContentRectChanged: ((CGRect) -> Void)?
     var onRealignRequested: (() -> Void)?
@@ -21,6 +24,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
     var onFrameSaved: ((CGRect) -> Void)?
     var onScreenChanged: ((NSScreen) -> Void)?
     var onClosed: (() -> Void)?
+    var dockSlotIndexProvider: (() -> Int)?
 
     init(workspaceName: String) {
         self.workspaceName = workspaceName
@@ -30,7 +34,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
     func show(on screen: NSScreen, initialFrame: CGRect? = nil) -> CGRect {
         let visible = screen.visibleFrame
         let initialRect: CGRect
-        if let saved = initialFrame, saved.width >= 360, saved.height >= 260,
+        if let saved = initialFrame, saved.width >= 520, saved.height >= 340,
            NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
             initialRect = saved
         } else {
@@ -43,7 +47,8 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
 
         if let existing = window {
             existing.setFrame(initialRect, display: true)
-            existing.orderBack(nil)
+            existing.orderFrontRegardless()
+            updateMouseHitTesting(at: NSEvent.mouseLocation)
             return currentContentAXRect() ?? initialRect
         }
 
@@ -56,14 +61,13 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         win.title = workspaceName
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
-        win.isMovableByWindowBackground = true
+        // Never allow dragging from the transparent interior; only the header bar & resize edges accept mouse events
+        win.isMovableByWindowBackground = false
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 520, height: 340)
-        // Transparent & non-opaque so the interior never obscures or blocks clicks on member windows
         win.isOpaque = false
         win.backgroundColor = .clear
         win.hasShadow = false
-        // Prevent entering an isolated native Full Screen Space (which separates the frame from its member windows)
         win.collectionBehavior = [.fullScreenNone]
         win.delegate = self
 
@@ -71,11 +75,18 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
             controller: self,
             onRealign: { [weak self] in self?.onRealignRequested?() },
             onToggleSidebar: { [weak self] in self?.toggleSidebarDock() },
-            onToggleMaximize: { [weak self] in self?.toggleMaximize() }
+            onToggleMaximize: { [weak self] in self?.toggleMaximize() },
+            onDragHeader: { [weak self] in
+                guard let win = self?.window, let event = NSApp.currentEvent else { return }
+                win.performDrag(with: event)
+            }
         )
         win.contentView = NSHostingView(rootView: rootView)
         win.orderFrontRegardless()
         self.window = win
+
+        installMouseMonitors()
+        updateMouseHitTesting(at: NSEvent.mouseLocation)
 
         return currentContentAXRect() ?? initialRect
     }
@@ -84,11 +95,22 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         if isDockedToSidebar {
             toggleSidebarDock()
         }
-        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
+        updateMouseHitTesting(at: NSEvent.mouseLocation)
+    }
+
+    func setHiddenForVirtualSwitch(_ hidden: Bool) {
+        if hidden {
+            window?.orderOut(nil)
+        } else {
+            window?.orderFrontRegardless()
+            updateMouseHitTesting(at: NSEvent.mouseLocation)
+        }
     }
 
     func close() {
         pendingSyncWorkItem?.cancel()
+        removeMouseMonitors()
         window?.delegate = nil
         window?.close()
         window = nil
@@ -145,21 +167,77 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
                 win.setFrame(restore, display: true, animate: true)
             }
             onSetMinimized?(false)
+            updateMouseHitTesting(at: NSEvent.mouseLocation)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
                 self?.onRealignRequested?()
             }
         } else {
             savedExpandedFrame = win.frame
             isDockedToSidebar = true
+            win.ignoresMouseEvents = false
             onSetMinimized?(true)
+            let slotIndex = dockSlotIndexProvider?() ?? 0
+            let dockHeight: CGFloat = 170
+            let step: CGFloat = dockHeight + 12
+            let yPos = max(visible.minY + 12, round(visible.maxY - 200 - CGFloat(slotIndex) * step))
             let dockRect = CGRect(
                 x: visible.origin.x + 8,
-                y: round(visible.midY - 90),
-                width: 76,
-                height: 180
+                y: yPos,
+                width: 78,
+                height: dockHeight
             )
             win.level = .floating
             win.setFrame(dockRect, display: true, animate: true)
+        }
+    }
+
+    // MARK: - WindowServer Pass-Through Hit Testing
+
+    private func installMouseMonitors() {
+        removeMouseMonitors()
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateMouseHitTesting(at: NSEvent.mouseLocation)
+            }
+        }
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            self?.updateMouseHitTesting(at: NSEvent.mouseLocation)
+            return event
+        }
+    }
+
+    private func removeMouseMonitors() {
+        if let globalMouseMonitor {
+            NSEvent.removeMonitor(globalMouseMonitor)
+            self.globalMouseMonitor = nil
+        }
+        if let localMouseMonitor {
+            NSEvent.removeMonitor(localMouseMonitor)
+            self.localMouseMonitor = nil
+        }
+    }
+
+    private func updateMouseHitTesting(at screenPoint: NSPoint) {
+        guard let win = window else { return }
+        if isDockedToSidebar {
+            if win.ignoresMouseEvents { win.ignoresMouseEvents = false }
+            return
+        }
+
+        let frame = win.frame
+        guard frame.contains(screenPoint) else {
+            if !win.ignoresMouseEvents { win.ignoresMouseEvents = true }
+            return
+        }
+
+        let inHeader = screenPoint.y >= (frame.maxY - Self.headerHeight)
+        let inLeftEdge = screenPoint.x <= (frame.minX + Self.resizeEdgeThickness)
+        let inRightEdge = screenPoint.x >= (frame.maxX - Self.resizeEdgeThickness)
+        let inBottomEdge = screenPoint.y <= (frame.minY + Self.resizeEdgeThickness)
+
+        let shouldAcceptMouse = inHeader || inLeftEdge || inRightEdge || inBottomEdge
+        if win.ignoresMouseEvents == shouldAcceptMouse {
+            win.ignoresMouseEvents = !shouldAcceptMouse
         }
     }
 
@@ -203,6 +281,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
 
     func windowWillClose(_ notification: Notification) {
         pendingSyncWorkItem?.cancel()
+        removeMouseMonitors()
         onClosed?()
     }
 
@@ -229,6 +308,7 @@ private struct WorkspaceFrameHeaderView: View {
     let onRealign: () -> Void
     let onToggleSidebar: () -> Void
     let onToggleMaximize: () -> Void
+    let onDragHeader: () -> Void
 
     var body: some View {
         if controller.isDockedToSidebar {
@@ -261,7 +341,7 @@ private struct WorkspaceFrameHeaderView: View {
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Spacer().frame(width: 64) // leave room for traffic lights
+                    Spacer().frame(width: 64)
 
                     Image(systemName: "rectangle.3.group")
                         .foregroundStyle(Color.accentColor)
@@ -300,6 +380,11 @@ private struct WorkspaceFrameHeaderView: View {
                 .padding(.horizontal, 10)
                 .frame(height: WorkspaceFrameController.headerHeight)
                 .background(.ultraThinMaterial)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 2)
+                        .onChanged { _ in onDragHeader() }
+                )
 
                 // Completely clear, click-through body with a subtle 2px frame border
                 Color.clear

@@ -52,6 +52,7 @@ final class WindowManager: ObservableObject {
         guard let session = activeSessions[workspaceId] else { return }
         if session.workspace.spaceBehavior == .virtualSwitch {
             hideOtherVirtualWorkspaces(except: workspaceId)
+            session.frameController?.setHiddenForVirtualSwitch(false)
         }
         lastActiveWorkspaceId = workspaceId
         session.frameController?.focus()
@@ -66,12 +67,13 @@ final class WindowManager: ObservableObject {
             AXUIElementSetAttributeValue(win, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             AXUIElementPerformAction(win, kAXRaiseAction as CFString)
         }
-        setStatus("Brought “\(session.workspace.name)” to front.", severity: .info)
+        setStatus("Focused “\(session.workspace.name)”.", severity: .info)
     }
 
     private func hideOtherVirtualWorkspaces(except keepId: UUID) {
         for (otherId, otherSession) in activeSessions where otherId != keepId && otherSession.workspace.spaceBehavior == .virtualSwitch {
             setTrackedWindowsMinimized(true, for: otherId)
+            otherSession.frameController?.setHiddenForVirtualSwitch(true)
         }
     }
 
@@ -110,6 +112,12 @@ final class WindowManager: ObservableObject {
         guard var session = activeSessions[updated.id] else { return }
         let old = session.workspace
         session.workspace = updated
+        session.frameController?.workspaceName = updated.name
+
+        if old.mode != updated.mode {
+            await launchWorkspace(updated)
+            return
+        }
 
         if let newScreen = targetScreen(for: updated), old.targetDisplayName != updated.targetDisplayName {
             session.screen = newScreen
@@ -121,7 +129,6 @@ final class WindowManager: ObservableObject {
             if !validSlotIds.contains(slotId) || updated.slotApps[slotId] == nil {
                 session.trackedSlotWindows.removeValue(forKey: slotId)
             } else if old.slotApps[slotId] != updated.slotApps[slotId] {
-                // App assignment changed for this slot -> clear old window so realign opens/matches the new one
                 session.trackedSlotWindows.removeValue(forKey: slotId)
             }
         }
@@ -135,6 +142,8 @@ final class WindowManager: ObservableObject {
 
         if old.gap != updated.gap ||
             old.presetId != updated.presetId ||
+            old.customSlots != updated.customSlots ||
+            old.spaceBehavior != updated.spaceBehavior ||
             old.slotApps != updated.slotApps ||
             old.targetDisplayName != updated.targetDisplayName {
             await realignWorkspace(id: updated.id)
@@ -192,8 +201,11 @@ final class WindowManager: ObservableObject {
             if name == "__primary__" {
                 return NSScreen.screens.first
             }
-            if let matched = NSScreen.screens.first(where: { $0.localizedName == name }) {
-                return matched
+            if let matchedByTag = NSScreen.screens.first(where: { $0.displayTag == name }) {
+                return matchedByTag
+            }
+            if let matchedByName = NSScreen.screens.first(where: { $0.localizedName == name }) {
+                return matchedByName
             }
         }
         return NSScreen.main ?? NSScreen.screens.first
@@ -201,6 +213,7 @@ final class WindowManager: ObservableObject {
 
     @discardableResult
     func launchWorkspace(_ workspace: SavedWorkspace, onFrameSaved: ((CGRect) -> Void)? = nil) async -> Bool {
+        guard !isLaunching else { return false }
         refreshAccessibilityStatus()
         guard isAccessibilityGranted else {
             setStatus("Accessibility permission required to move and resize windows.", severity: .error)
@@ -279,6 +292,12 @@ final class WindowManager: ObservableObject {
             }
             controller.onScreenChanged = { [weak self] newScreen in
                 self?.activeSessions[wsId]?.screen = newScreen
+            }
+            controller.dockSlotIndexProvider = { [weak self] in
+                guard let self else { return 0 }
+                return self.activeSessions.values.filter {
+                    $0.workspace.id != wsId && $0.frameController?.isDockedToSidebar == true
+                }.count
             }
             controller.onClosed = { [weak self] in
                 guard let self else { return }
@@ -379,6 +398,7 @@ final class WindowManager: ObservableObject {
 
         let containerAX = (ws.mode == .framed) ? session.frameController?.currentContentAXRect() : nil
         let screen = session.screen
+        let containerBounds = containerAX ?? screenAXBounds(screen)
         lastActiveWorkspaceId = workspaceId
 
         var usedWindowKeys = Set<String>()
@@ -387,6 +407,7 @@ final class WindowManager: ObservableObject {
         }
 
         var alignedCount = 0
+        var slotOverflows: [Int: CGSize] = [:]
         for slot in ws.preset.slots {
             guard let assignment = ws.slotApps[slot.id] else { continue }
             let targetRect: CGRect
@@ -397,7 +418,9 @@ final class WindowManager: ObservableObject {
             }
 
             if let existing = session.trackedSlotWindows[slot.id], isWindowAlive(existing) {
-                applyFrame(targetRect, to: existing)
+                if let clampedSize = applyFrame(targetRect, to: existing, containerBounds: containerBounds) {
+                    slotOverflows[slot.id] = clampedSize
+                }
                 alignedCount += 1
             } else if let reopened = await openOrFindWindow(
                 for: assignment,
@@ -407,11 +430,14 @@ final class WindowManager: ObservableObject {
                 let key = windowIdentityKey(reopened, pid: pidForElement(reopened))
                 usedWindowKeys.insert(key)
                 session.trackedSlotWindows[slot.id] = reopened
-                applyFrame(targetRect, to: reopened)
+                if let clampedSize = applyFrame(targetRect, to: reopened, containerBounds: containerBounds) {
+                    slotOverflows[slot.id] = clampedSize
+                }
                 alignedCount += 1
             }
         }
 
+        overflowWarnings[workspaceId] = slotOverflows.isEmpty ? nil : slotOverflows
         activeSessions[workspaceId] = session
         raiseTrackedWindows(for: workspaceId)
         setStatus("Re-aligned \(alignedCount) windows for “\(ws.name)”.", severity: .success)
@@ -478,6 +504,7 @@ final class WindowManager: ObservableObject {
                 let ws = session.workspace
                 let containerAX: CGRect? = session.frameController?.currentContentAXRect()
                 let screen = session.screen
+                let containerBounds = containerAX ?? self.screenAXBounds(screen)
 
                 for slot in ws.preset.slots {
                     guard let win = session.trackedSlotWindows[slot.id] else { continue }
@@ -489,14 +516,26 @@ final class WindowManager: ObservableObject {
                         expected = slot.rect.accessibilityRect(in: screen, gap: ws.gap)
                     }
 
+                    // Account for any known minimum-size constraint so Auto-Lock never loops infinitely
+                    var effectiveRect = expected
+                    if let minSize = self.overflowWarnings[workspaceId]?[slot.id] {
+                        let w = max(expected.width, minSize.width)
+                        let h = max(expected.height, minSize.height)
+                        let x = max(containerBounds.minX, min(expected.origin.x, containerBounds.maxX - w))
+                        let y = max(containerBounds.minY, min(expected.origin.y, containerBounds.maxY - h))
+                        effectiveRect = CGRect(x: x, y: y, width: w, height: h)
+                    }
+
                     if let curPos = self.pointAttribute(win, kAXPositionAttribute),
                        let curSize = self.sizeAttribute(win, kAXSizeAttribute) {
-                        let drifted = abs(curPos.x - expected.origin.x) > 6 ||
-                            abs(curPos.y - expected.origin.y) > 6 ||
-                            abs(curSize.width - expected.width) > 6 ||
-                            abs(curSize.height - expected.height) > 6
+                        let drifted = abs(curPos.x - effectiveRect.origin.x) > 8 ||
+                            abs(curPos.y - effectiveRect.origin.y) > 8 ||
+                            abs(curSize.width - effectiveRect.width) > 8 ||
+                            abs(curSize.height - effectiveRect.height) > 8
                         if drifted {
-                            self.applyFrame(expected, to: win)
+                            if let clamped = self.applyFrame(expected, to: win, containerBounds: containerBounds) {
+                                self.overflowWarnings[workspaceId, default: [:]][slot.id] = clamped
+                            }
                         }
                     }
                 }
@@ -602,9 +641,20 @@ final class WindowManager: ObservableObject {
             let existingWindows = standardWindows(of: appElement)
             let existingKeys = Set(existingWindows.map { windowIdentityKey($0, pid: pid) })
 
-            // If user picked an already-open window (preferredWindowTitle), match it first
+            // If user picked an already-open window (preferredWindowNumber or preferredWindowTitle), match it first
+            let unused = existingWindows.filter { !excludingWindowKeys.contains(windowIdentityKey($0, pid: pid)) }
+            if let winNum = assignment.preferredWindowNumber,
+               let cgBounds = cgWindowBounds(windowNumber: winNum),
+               let matchedByBounds = unused.min(by: { a, b in
+                   let ar = CGRect(origin: pointAttribute(a, kAXPositionAttribute) ?? .zero, size: sizeAttribute(a, kAXSizeAttribute) ?? .zero)
+                   let br = CGRect(origin: pointAttribute(b, kAXPositionAttribute) ?? .zero, size: sizeAttribute(b, kAXSizeAttribute) ?? .zero)
+                   let da = abs(ar.origin.x - cgBounds.origin.x) + abs(ar.origin.y - cgBounds.origin.y) + abs(ar.width - cgBounds.width)
+                   let db = abs(br.origin.x - cgBounds.origin.x) + abs(br.origin.y - cgBounds.origin.y) + abs(br.width - cgBounds.width)
+                   return da < db
+               }) {
+                return matchedByBounds
+            }
             if let preferred = assignment.preferredWindowTitle, !preferred.isEmpty {
-                let unused = existingWindows.filter { !excludingWindowKeys.contains(windowIdentityKey($0, pid: pid)) }
                 if let exact = unused.first(where: { (stringAttribute($0, kAXTitleAttribute) ?? "") == preferred }) {
                     return exact
                 }
@@ -797,6 +847,21 @@ final class WindowManager: ObservableObject {
             }
             return true
         }
+    }
+
+    private func cgWindowBounds(windowNumber: Int) -> CGRect? {
+        guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        for info in list {
+            if let num = info[kCGWindowNumber as String] as? Int, num == windowNumber,
+               let b = info[kCGWindowBounds as String] as? [String: Any],
+               let x = b["X"] as? Double, let y = b["Y"] as? Double,
+               let w = b["Width"] as? Double, let h = b["Height"] as? Double {
+                return CGRect(x: x, y: y, width: w, height: h)
+            }
+        }
+        return nil
     }
 
     private func windowIdentityKey(_ window: AXUIElement, pid: pid_t) -> String {
