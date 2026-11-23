@@ -36,7 +36,7 @@ final class WorkspaceFrameController: NSObject, ObservableObject, NSWindowDelega
         let visible = screen.visibleFrame
         let initialRect: CGRect
         if let saved = initialFrame, saved.width >= 520, saved.height >= 340,
-           NSScreen.screens.contains(where: { $0.visibleFrame.intersects(saved) }) {
+           visible.intersects(saved) {
             initialRect = saved
         } else {
             let initialWidth = round(visible.width * 0.92)

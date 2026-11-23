@@ -62,6 +62,9 @@ struct ContentView: View {
             presenting: workspacePendingDelete
         ) { ws in
             Button("Delete “\(ws.name)”", role: .destructive) {
+                if windowManager.isActive(ws.id) {
+                    windowManager.stopWorkspace(id: ws.id, closeWindows: false)
+                }
                 store.deleteWorkspace(ws.id)
                 workspacePendingDelete = nil
             }
@@ -280,9 +283,19 @@ struct ContentView: View {
         return VStack(spacing: 0) {
             // Top bar
             HStack(spacing: 12) {
-                TextField("Workspace Name", text: workspace.name)
-                    .textFieldStyle(.plain)
-                    .font(.title2.bold())
+                HStack(spacing: 6) {
+                    TextField("Workspace Name", text: workspace.name)
+                        .textFieldStyle(.plain)
+                        .font(.title2.bold())
+                    Image(systemName: "pencil")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(6)
+                .help("Click to rename workspace")
 
                 if windowManager.isActive(ws.id) {
                     HStack(spacing: 5) {
@@ -315,11 +328,11 @@ struct ContentView: View {
                     Button {
                         windowManager.stopWorkspace(id: ws.id, closeWindows: true)
                     } label: {
-                        Label("Close", systemImage: "xmark.circle")
+                        Label("Close Windows", systemImage: "xmark.circle")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
-                    .help("Stop and close this active workspace's windows")
+                    .help("Close all member windows and stop tracking this workspace (closing only the Framed Group keeps member windows open)")
                 } else if windowManager.hasActiveWorkspace {
                     Button {
                         Task { await windowManager.realignActiveWorkspace() }
@@ -527,8 +540,9 @@ struct ContentView: View {
                                         }
                                         if let savedDisplay = ws.targetDisplayName,
                                            savedDisplay != "__primary__",
-                                           !NSScreen.screens.contains(where: { $0.displayTag == savedDisplay }) {
-                                            Text("\(savedDisplay) (Disconnected)").tag(savedDisplay)
+                                           !NSScreen.screens.contains(where: { $0.displayTag == savedDisplay || $0.localizedName == savedDisplay }) {
+                                            let displayLabel = savedDisplay.split(separator: "#", maxSplits: 1).first.map(String.init) ?? savedDisplay
+                                            Text("\(displayLabel) (Disconnected)").tag(savedDisplay)
                                         }
                                     }
                                     .frame(width: 170)

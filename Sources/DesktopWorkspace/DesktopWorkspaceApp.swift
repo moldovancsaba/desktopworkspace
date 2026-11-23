@@ -119,14 +119,23 @@ struct DesktopWorkspaceApp: App {
                     windowManager.focusWorkspace(id: ws.id)
                 } else {
                     Task {
-                        await windowManager.launchWorkspace(ws) { rect in
+                        let launched = await windowManager.launchWorkspace(ws) { rect in
                             store.updateSavedFrame(rect, for: ws.id)
+                        }
+                        if !launched {
+                            NSApp.activate(ignoringOtherApps: true)
+                            openWindow(id: "main")
                         }
                     }
                 }
             },
             onRealign: {
+                let hadActive = windowManager.hasActiveWorkspace
                 Task { await windowManager.realignActiveWorkspace() }
+                if !hadActive {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "main")
+                }
             }
         )
     }

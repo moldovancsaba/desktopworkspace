@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2] - 2026-11-23
+### Fixed
+- **Active Workspace Lifecycle & Overflow Cleanup:** Deleting an active workspace now stops its session cleanly; `stopWorkspace` clears stale `overflowWarnings` badges; `WorkspaceStore.binding(for:)` looks up by `id` instead of capturing array index.
+- **Multi-Monitor & Mode Switch:** Preserved `onFrameSaved` across `mode` switches in `syncUpdatedWorkspace`, checked `screen.visibleFrame` when restoring `savedFrame` so changing `Display` moves the Framed Group, scoped `dockSlotIndexProvider` per display, and formatted disconnected display labels cleanly (supporting legacy `localizedName` configs).
+- **Mission Control & Hotkey Feedback:** Scoped `findDesktopButtons` to Mission Control's spaces container (ignoring Dock minimized windows) with CJK trailing-digit matching; global hotkeys (`⌥⌘1–9`, `⌥⌘R`) now open the main window on warning/error.
+- **UI & Update Safety:** Added rename affordance on the workspace title, clarified `"Close Windows"` button wording/tooltip, added Accessibility hint in the Open Windows tab, fixed `LayoutThumbnail` uniform width, and shell-escaped paths in `UpdateManager`.
+
 ## [1.4.1] - 2026-11-22
 ### Fixed
 - **Active Slot Swap Preservation:** Drag-and-drop slot swaps on an active workspace now preserve `trackedSlotWindows` and `overflowWarnings`, and cleanly realign swapped windows instead of reopening them.

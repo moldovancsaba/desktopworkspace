@@ -42,10 +42,11 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func binding(for id: UUID) -> Binding<SavedWorkspace>? {
-        guard let idx = workspaces.firstIndex(where: { $0.id == id }) else { return nil }
+        guard let initial = workspaces.first(where: { $0.id == id }) else { return nil }
         return Binding(
-            get: { self.workspaces[idx] },
+            get: { self.workspaces.first(where: { $0.id == id }) ?? initial },
             set: { newValue in
+                guard let idx = self.workspaces.firstIndex(where: { $0.id == id }) else { return }
                 self.workspaces[idx] = newValue
                 self.saveWorkspaces()
             }

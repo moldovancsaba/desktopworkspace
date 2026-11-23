@@ -171,7 +171,21 @@ struct AppPickerSheet: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(filteredWindows) { item in
+            VStack(spacing: 0) {
+                if !AXIsProcessTrusted() {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Grant Accessibility permission in System Settings to see full window titles.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.08))
+                }
+                List(filteredWindows) { item in
                 let usedInSlot = assignedOpenWindows[item.windowNumber]
                 Button {
                     onPick(item.toAssignment())
@@ -210,6 +224,7 @@ struct AppPickerSheet: View {
                 .disabled(usedInSlot != nil)
             }
             .listStyle(.inset)
+            }
         }
     }
 

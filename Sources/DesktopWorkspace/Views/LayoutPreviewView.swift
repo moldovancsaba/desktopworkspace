@@ -35,6 +35,7 @@ struct LayoutThumbnail: View {
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(isSelected ? .primary : .secondary)
                 .lineLimit(1)
+                .frame(maxWidth: 72)
         }
         .padding(8)
         .background(

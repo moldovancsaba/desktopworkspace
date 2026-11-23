@@ -12,6 +12,7 @@ struct ActiveWorkspaceSession {
     var trackedSlotWindows: [Int: AXUIElement]
     var frameController: WorkspaceFrameController?
     var autoLockTask: Task<Void, Never>?
+    var onFrameSaved: ((CGRect) -> Void)?
 }
 
 @MainActor
@@ -97,6 +98,7 @@ final class WindowManager: ObservableObject {
                     }
                 }
             }
+            overflowWarnings.removeValue(forKey: workspaceId)
             activeWorkspaceIds = Set(activeSessions.keys)
             if lastActiveWorkspaceId == workspaceId {
                 lastActiveWorkspaceId = activeSessions.keys.first
@@ -115,7 +117,7 @@ final class WindowManager: ObservableObject {
         session.frameController?.workspaceName = updated.name
 
         if old.mode != updated.mode {
-            await launchWorkspace(updated)
+            await launchWorkspace(updated, onFrameSaved: session.onFrameSaved)
             return
         }
 
@@ -319,8 +321,10 @@ final class WindowManager: ObservableObject {
             }
             controller.dockSlotIndexProvider = { [weak self] in
                 guard let self else { return 0 }
+                let targetTag = (self.activeSessions[wsId]?.screen ?? screen).displayTag
                 let usedIndices = Set(self.activeSessions.values.compactMap { session -> Int? in
                     guard session.workspace.id != wsId,
+                          session.screen.displayTag == targetTag,
                           let fc = session.frameController,
                           fc.isDockedToSidebar else { return nil }
                     return fc.dockSlotIndex
@@ -386,7 +390,8 @@ final class WindowManager: ObservableObject {
             screen: screen,
             trackedSlotWindows: slotWindows,
             frameController: newFrameController,
-            autoLockTask: nil
+            autoLockTask: nil,
+            onFrameSaved: onFrameSaved
         )
         session.autoLockTask = makeAutoLockTask(for: workspace.id)
         activeSessions[workspace.id] = session
@@ -641,8 +646,18 @@ final class WindowManager: ObservableObject {
     }
 
     private func findDesktopButtons(in root: AXUIElement) -> [AXUIElement] {
-        findAllElements(in: root, maxDepth: 6, matching: { el in
+        // Prefer scoping to Mission Control's spaces container so minimized Dock windows are not matched
+        let spacesContainer = findElement(in: root, maxDepth: 4, matching: { el in
+            let id = (stringAttribute(el, kAXIdentifierAttribute) ?? "").lowercased()
+            return id.contains("spaces") || id.contains("mc.spaces")
+        }) ?? root
+
+        return findAllElements(in: spacesContainer, maxDepth: 6, matching: { el in
             guard stringAttribute(el, kAXRoleAttribute) == kAXButtonRole as String else { return false }
+            let subrole = stringAttribute(el, kAXSubroleAttribute) ?? ""
+            if subrole == "AXApplicationDockItem" || subrole == "AXMinimizedWindowDockItem" {
+                return false
+            }
             let desc = (stringAttribute(el, kAXDescriptionAttribute) ?? "").lowercased()
             let title = (stringAttribute(el, kAXTitleAttribute) ?? "").lowercased()
             let id = (stringAttribute(el, kAXIdentifierAttribute) ?? "").lowercased()
@@ -652,9 +667,9 @@ final class WindowManager: ObservableObject {
             if desc.hasPrefix("desktop ") || title.hasPrefix("desktop ") || id.contains("desktop") || id.contains("space") {
                 return true
             }
-            // Locale-independent fallback: Mission Control space thumbnails typically have a localized label ending in a space + number (e.g. "Íróasztal 2", "Schreibtisch 2")
-            let label = title.isEmpty ? desc : title
-            return label.split(separator: " ").last.flatMap({ Int($0) }) != nil
+            // Locale-independent fallback: match localized space labels ending in digits (including spaceless CJK e.g. "桌面2")
+            let label = (title.isEmpty ? desc : title).trimmingCharacters(in: .whitespaces)
+            return label.last?.isNumber == true
         })
     }
 
